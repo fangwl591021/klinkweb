@@ -1,5 +1,11 @@
-const OFFICIAL_LIFF_ID = "2007221311-nEOHqNxK";
-const officialLiffUrl = (page = "home") => `https://liff.line.me/${OFFICIAL_LIFF_ID}?page=${encodeURIComponent(page)}`;
+const OFFICIAL_PAGES = {
+  home: "https://www.k-link.com.tw/",
+  about: "https://www.k-link.com.tw/about-us%E8%B5%B0%E9%80%B2%E5%BA%B7%E7%AB%8B",
+  news: "https://www.k-link.com.tw/news-%E6%9C%80%E6%96%B0%E6%B6%88%E6%81%AF",
+  products: "https://www.k-link.com.tw/products-%E7%94%A2%E5%93%81%E7%B8%BD%E8%A6%BD",
+  video: "https://www.k-link.com.tw/video%E5%BD%B1%E9%9F%B3%E5%B0%88%E5%8D%80",
+};
+const officialLiffUrl = (page = "home") => `#official-${page}`;
 
 const inviteFromLocation = () => {
   const params = new URLSearchParams(location.search);
@@ -478,7 +484,23 @@ async function zodiac() {
 }
 const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function openAiWear(){try{if(window.liff?.isInClient?.()){window.liff.openWindow({url:AI_WEAR_LIFF_URL,external:false});return}}catch{/* Fall back to direct LIFF navigation. */}window.location.href=AI_WEAR_LIFF_URL}
-function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
+function openOfficialSite(page="home"){
+  document.querySelector("#officialSiteOverlay")?.remove();
+  const target=OFFICIAL_PAGES[page]||OFFICIAL_PAGES.home;
+  const overlay=document.createElement("section");
+  overlay.id="officialSiteOverlay";
+  overlay.className="official-site-overlay";
+  overlay.innerHTML=`<header><button type="button" aria-label="關閉官網">‹</button><strong>康立官方網站</strong><span></span></header><div class="official-site-loading">官網載入中…</div><iframe title="康立官方網站" src="${esc(target)}" referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+  document.body.appendChild(overlay);
+  const close=()=>overlay.remove();
+  overlay.querySelector("button").onclick=close;
+  overlay.querySelector("iframe").addEventListener("load",()=>overlay.querySelector(".official-site-loading")?.remove());
+}
+function bindOfficialSiteLinks(){
+  const links=[[document.querySelector(".klink-home-hero>a"),"home"],[document.querySelector(".klink-official-banner"),"home"],...Array.from(document.querySelectorAll(".klink-home-grid>a")).map((link,index)=>[link,["about","news","products","video"][index]])];
+  links.forEach(([link,page])=>link?.addEventListener("click",(event)=>{event.preventDefault();openOfficialSite(page)}));
+}
+function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":"wallet";await render()}));bindOfficialSiteLinks();$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function mlmMemberPointBalance(fallbackBalance=0){
   try{
     mlmPointSyncError="";
