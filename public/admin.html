@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>康立行動入口｜營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260722-4" />
+    <link rel="stylesheet" href="/admin.css?v=20260722-5" />
   </head>
   <body>
     <div class="shell">
@@ -14,6 +14,9 @@
           <img id="adminAvatar" alt="LINE 頭貼" />
           <div><strong id="adminName"></strong><span>目前登入管理員</span></div>
         </div>
+        <a class="mlm-return" href="https://mlm.fangwl591021.workers.dev/console">
+          <span aria-hidden="true">←</span> 返回 MLM 綜合主控台
+        </a>
         <p class="side-label">營運中心</p>
         <nav class="side-nav">
           <button class="nav-item active" data-page="dashboard">
@@ -28,10 +31,10 @@
           <button class="nav-item" data-page="points">
             <span>◉</span> 點數規則
           </button>
-          <button class="nav-item" data-page="courses">
+          <button class="nav-item" data-page="courses" hidden>
             <span>▣</span> 課程／活動
           </button>
-          <button class="nav-item" data-page="carousel">
+          <button class="nav-item" data-page="carousel" hidden>
             <span>▤</span> 每日輪播贈點
           </button>
           <button class="nav-item" data-page="richmenu">
@@ -61,7 +64,7 @@
         <section id="status" class="status hidden"></section>
 
         <section class="page active" data-content="dashboard">
-          <div class="metrics">
+          <div class="metrics admin-visible-grid">
             <article>
               <p>系統會員</p>
               <strong id="metricMembers">–</strong
@@ -72,12 +75,12 @@
               <strong id="metricPoints">–</strong
               ><small>依已啟用規則入帳</small>
             </article>
-            <article>
+            <article hidden>
               <p>上架課程</p>
               <strong id="metricCourses">–</strong
               ><small>公開中的課程／活動</small>
             </article>
-            <article>
+            <article hidden>
               <p>每日簽到</p>
               <strong id="metricCheckins">–</strong
               ><small>累計有效輪播簽到</small>
@@ -87,17 +90,17 @@
             <div class="panel-head">
               <div>
                 <h2>營運快速入口</h2>
-                <p>先設定點數規則，再建立活動內容。</p>
+                <p>管理會員、名片與點數規則。</p>
               </div>
             </div>
-            <div class="quick-grid">
+            <div class="quick-grid admin-visible-grid">
               <button data-go="points">
                 <b>1</b><span>設定贈點規則</span
                 ><small>註冊、分享、每日簽到</small></button
-              ><button data-go="courses">
+              ><button data-go="courses" hidden>
                 <b>2</b><span>建立課程活動</span
                 ><small>現場或線上簽到</small></button
-              ><button data-go="carousel">
+              ><button data-go="carousel" hidden>
                 <b>3</b><span>建立輪播贈點</span
                 ><small>圖像、影片與觀看門檻</small></button
               ><a href="/" target="_blank"
@@ -325,6 +328,6 @@
       </section>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260722-4"></script>
+    <script type="module" src="/admin.js?v=20260722-5"></script>
   </body>
 </html>
