@@ -1489,8 +1489,12 @@ const collectionFields = [
   ["department","部門","text"],["mobile","手機","tel"],["companyPhone","公司電話","tel"],["email","Email","email"],
   ["websiteUrl","網站","url"],["lineUrl","LINE 連結","url"],["address","地址","text"],["serviceDescription","服務說明","textarea"],["note","私人備註","textarea"],
 ];
+const collectionWideFields = new Set(["companyName","mobile","companyPhone","email","websiteUrl","lineUrl","address"]);
 function collectionForm(card = {}, prefix = "contact") {
-  return `<div class="contact-card-form">${collectionFields.map(([key,label,type])=>`<label class="${type === "textarea" ? "full" : ""}">${label}${type === "textarea" ? `<textarea id="${prefix}-${key}" rows="3">${esc(card[key])}</textarea>` : `<input id="${prefix}-${key}" type="${type}" value="${esc(card[key])}">`}</label>`).join("")}</div>`;
+  return `<div class="contact-card-form">${collectionFields.map(([key,label,type])=>{
+    const full=type==="textarea" || collectionWideFields.has(key);
+    return `<label class="${full ? "full" : ""}">${label}${type === "textarea" ? `<textarea id="${prefix}-${key}" rows="4">${esc(card[key])}</textarea>` : `<input id="${prefix}-${key}" type="${type}" value="${esc(card[key])}">`}</label>`;
+  }).join("")}</div>`;
 }
 function readCollectionForm(prefix = "contact") { return Object.fromEntries(collectionFields.map(([key])=>[key,$(`#${prefix}-${key}`)?.value || ""])); }
 
