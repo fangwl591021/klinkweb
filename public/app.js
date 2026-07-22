@@ -77,6 +77,7 @@ const state = {
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
 let loginInProgress = false;
+let mlmPointSyncError = "";
 // 必須在 liff.init() 消耗 OAuth 參數前先記住是否為登入回跳。
 const liffLoginCallbackAtLoad = (() => {
   const params = new URLSearchParams(location.search);
@@ -477,6 +478,7 @@ function openAiWear(){try{if(window.liff?.isInClient?.()){window.liff.openWindow
 function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":"wallet";await render()}));$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function mlmMemberPointBalance(fallbackBalance=0){
   try{
+    mlmPointSyncError="";
     await initLiffOnce();
     if(!liff.isLoggedIn()){
       // klinkweb 的登入工作階段比 LINE ID Token 長。PC 瀏覽器再次開啟時
@@ -488,7 +490,8 @@ async function mlmMemberPointBalance(fallbackBalance=0){
       return null;
     }
     const idToken=liff.getIDToken();
-    if(!idToken){
+    const accessToken=liff.getAccessToken()||"";
+    if(!idToken&&!accessToken){
       // PC 外部瀏覽器有時保留 LINE Login 狀態，卻已失去 ID Token。
       // isLoggedIn() 仍會回 true，所以必須主動登出再授權，不能退回
       // klinkweb 的本機餘額，否則就會和手機顯示不同。
@@ -501,19 +504,20 @@ async function mlmMemberPointBalance(fallbackBalance=0){
       }
       throw new Error("LINE 登入未提供 ID Token，無法核對康立智能 K點");
     }
-    const payload=await api("/v1/points/mlm-balance",{method:"POST",body:JSON.stringify({idToken})});
+    const payload=await api("/v1/points/mlm-balance",{method:"POST",body:JSON.stringify({idToken:idToken||"",accessToken})});
     if(!Number.isFinite(Number(payload.balance)))throw new Error("康立智能 K點讀取失敗");
     sessionStorage.removeItem("klinkweb_point_reauth_attempted");
     return Number(payload.balance);
   }catch(error){
     console.warn("MLM member point sync failed",error);
+    mlmPointSyncError=error?.message||"康立智能 K點同步失敗";
     return null;
   }
 }
 async function home() {
   const wallet = await api("/v1/points/wallet");
   const syncedPointBalance = await mlmMemberPointBalance(wallet.wallet.balance);
-  const syncedPointText = syncedPointBalance == null ? "同步中…" : format(syncedPointBalance);
+  const syncedPointText = syncedPointBalance == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointBalance);
   layout(
     `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>康立智能 K點</span><strong>${syncedPointText}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame klink-mobile-home"><header class="klink-home-hero"><div class="klink-brand"><span>K</span><div><b>康立全球</b><small>K-LINK GLOBAL</small></div></div><p>從健康生活、會員服務到數位工具，開啟你的康立智慧行動入口。</p><a href="https://www.k-link.com.tw/" target="_blank" rel="noopener noreferrer">前往康立官方網站 <span>↗</span></a></header><div class="klink-home-grid"><a href="https://www.k-link.com.tw/about-us%E8%B5%B0%E9%80%B2%E5%BA%B7%E7%AB%8B" target="_blank" rel="noopener noreferrer"><i>01</i><b>走進康立</b><small>認識康立優勢與發展理念</small><span>›</span></a><a href="https://www.k-link.com.tw/news-%E6%9C%80%E6%96%B0%E6%B6%88%E6%81%AF" target="_blank" rel="noopener noreferrer"><i>02</i><b>最新訊息</b><small>掌握公告、活動與行事曆</small><span>›</span></a><a href="https://www.k-link.com.tw/products-%E7%94%A2%E5%93%81%E7%B8%BD%E8%A6%BD" target="_blank" rel="noopener noreferrer"><i>03</i><b>產品總覽</b><small>瀏覽康立產品與計畫內容</small><span>›</span></a><a href="https://www.k-link.com.tw/video%E5%BD%B1%E9%9F%B3%E5%B0%88%E5%8D%80" target="_blank" rel="noopener noreferrer"><i>04</i><b>影音專區</b><small>觀看品牌、產品與活動影片</small><span>›</span></a></div><section class="klink-home-philosophy"><small>K-LINK CULTURE</small><h2>5S × 3I 經營理念</h2><p>群策群力、與時俱進，透過前瞻策略、完善管理與創新工具，讓每位夥伴都能連結更大的事業舞台。</p><div><span>遠見</span><span>使命</span><span>表揚</span><span>感恩</span><span>歸屬</span></div></section><div class="klink-home-actions"><a class="line" href="https://lin.ee/omhFayP" target="_blank" rel="noopener noreferrer"><b>加入 LINE 客服</b><small>諮詢產品與會員服務</small></a><a href="https://nms.k-link.com.tw/ml.php" target="_blank" rel="noopener noreferrer"><b>康立會員入口</b><small>進入既有會員系統</small></a></div></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">分享邀請名片</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
@@ -570,7 +574,7 @@ async function showWalletQr(qrId, expiryId) {
 async function wallet() {
   const r = await api("/v1/points/wallet");
   const syncedPointBalance = await mlmMemberPointBalance(r.wallet.balance);
-  const syncedPointText = syncedPointBalance == null ? "同步中…" : format(syncedPointBalance);
+  const syncedPointText = syncedPointBalance == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointBalance);
   const entries = r.wallet.entries || [];
   const referrals = r.referrals || [];
   const regularEntries = entries.filter((x) => x.event_type !== "referral_attendance_reward");
