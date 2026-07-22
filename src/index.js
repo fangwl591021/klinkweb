@@ -162,7 +162,7 @@ function officialTallLiffHtml(env, requestUrl) {
 }
 
 async function resolveCardAiProvider(env) {
-  if (env.MLM_WORKER && typeof env.MLM_WORKER.fetch === "function") return env.MLM_WORKER;
+  if (env.MLM_WORKER) return env.MLM_WORKER;
   return resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
 }
 
