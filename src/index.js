@@ -597,7 +597,7 @@ async function app(request, env, ctx) {
     if (!idToken && !accessToken) return badRequest("LINE credential is required");
     try {
       const endpoint = String(env.MLM_MEMBER_POINTS_URL || "https://mlm.fangwl591021.workers.dev/api/ai-wear/member-points");
-      const response = await fetch(endpoint, {
+      const requestOptions = {
         method: "POST",
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({
@@ -607,7 +607,13 @@ async function app(request, env, ctx) {
           pictureUrl: member.pictureUrl || "",
           aiWearPointChannelKey: "oa1",
         }),
-      });
+      };
+      // Cloudflare may return 404 when one workers.dev Worker fetches another
+      // Worker in the same account. A Service Binding is the supported internal
+      // transport and also avoids a public network round trip.
+      const response = env.MLM_WORKER && typeof env.MLM_WORKER.fetch === "function"
+        ? await env.MLM_WORKER.fetch("https://mlm.internal/api/ai-wear/member-points", requestOptions)
+        : await fetch(endpoint, requestOptions);
       const responseText = await response.text();
       let payload = {};
       try { payload = responseText ? JSON.parse(responseText) : {}; } catch { payload = {}; }
