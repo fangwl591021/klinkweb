@@ -82,6 +82,7 @@ export async function saveCalendarSession(db, body) {
   const checkinOpensAt = String(body.checkinOpensAt || '').trim();
   const checkinClosesAt = String(body.checkinClosesAt || '').trim();
   const coverUrl = String(body.coverUrl || '').trim().slice(0, 4096);
+  const description = String(body.description || '由行事曆活動自動建立').trim().slice(0, 8000);
   if (!title) return { ok: false, reason: 'calendar_title_required' };
   if (!['physical', 'online'].includes(mode) || !startsAt || !endsAt || !checkinOpensAt || !checkinClosesAt) {
     return { ok: false, reason: 'missing_calendar_fields' };
@@ -96,9 +97,9 @@ export async function saveCalendarSession(db, body) {
     db.prepare(`
       INSERT OR IGNORE INTO courses (id, title, description, cover_url, status, created_by_user_id)
       VALUES (?, ?, ?, '', 'published', NULL)
-    `).bind(courseId, title, '由行事曆活動自動建立'),
-    db.prepare(`UPDATE courses SET title = ?, cover_url = ?, status = 'published', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
-      .bind(title, coverUrl, courseId),
+    `).bind(courseId, title, description),
+    db.prepare(`UPDATE courses SET title = ?, description = ?, cover_url = ?, status = 'published', updated_at = CURRENT_TIMESTAMP WHERE id = ?`)
+      .bind(title, description, coverUrl, courseId),
   ]);
   const existing = await db.prepare('SELECT id FROM course_sessions WHERE id = ?').bind(id).first();
   const codeHash = body.checkinCode ? await sha256(String(body.checkinCode)) : '';
