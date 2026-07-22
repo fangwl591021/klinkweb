@@ -95,7 +95,7 @@ function switchPage(page) {
     dashboard: ["營運統計中心", "K-LINK 康立 會員、點數與活動即時概況"],
     members: ["會員 CRM", "LINE Login 會員與推薦關係"],
     cards: ["全站名片庫", "會員數位名片與客戶收藏名片"],
-    points: ["點數規則", "建立並管理各類贈點事件"],
+    points: ["K點扣贈規則", "管理数字科学扣點與各類成功贈點"],
     courses: ["課程／活動", "活動清單、公開設定與場次管理"],
     calendar: ["課程／活動", "行事曆、活動 QR、報名與簽到"],
     carousel: ["每日輪播贈點", "設定圖像、影片與觀看門檻"],
@@ -322,8 +322,10 @@ async function loadPointRules() {
     const data = await api("/v1/admin/point-rules");
     container.innerHTML = data.rules.length ? data.rules.map((rule) => {
       const serviceRule=["number_science_full_report","number_science_other_report","card_collection_reward"].includes(rule.event_type);
-      const pointLabel=rule.event_type.startsWith("number_science_")?"扣除點數":"贈送點數";
-      return `<form class="rule-row" data-rule-id="${rule.id}"><div class="rule-event" data-event-type="${rule.event_type}">${ruleEventLabel[rule.event_type] || rule.event_type}<small>${rule.event_type}</small></div><label>${pointLabel}<input data-rule-field="points" type="number" min="${serviceRule?1:0}" value="${Number(rule.points)}"></label><label>執行頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${serviceRule && key !== "per_completion" ? "disabled" : ""}>${label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存</button></form>`;
+      const deduction=rule.event_type.startsWith("number_science_");
+      const direction=deduction?"扣點":"贈點";
+      const pointLabel=deduction?"每次扣除（K點）":"每次贈送（K點）";
+      return `<form class="rule-row ${deduction?"deduction-rule":"grant-rule"}" data-rule-id="${rule.id}"><div class="rule-event" data-event-type="${rule.event_type}"><span class="rule-direction ${deduction?"deduct":"grant"}">${direction}</span>${ruleEventLabel[rule.event_type] || rule.event_type}<small>${rule.event_type}</small></div><label>${pointLabel}<input data-rule-field="points" type="number" min="${serviceRule?1:0}" value="${Number(rule.points)}"></label><label>執行頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${serviceRule && key !== "per_completion" ? "disabled" : ""}>${serviceRule&&key==="per_completion"?"每次成功交易":label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存${direction}</button></form>`;
     }).join("") : '<p class="muted">尚未建立點數規則。</p>';
   } catch (error) {
     container.innerHTML = `<p class="danger">${error.message}</p>`;
@@ -342,7 +344,8 @@ $("#ruleList").addEventListener("submit", async (event) => {
         awardFrequency: form.querySelector('[data-rule-field="frequency"]').value,
         status: form.querySelector('[data-rule-field="status"]').value,
       });
-      showStatus("點數規則已儲存");
+      const eventType=form.querySelector(".rule-event").dataset.eventType;
+      showStatus(eventType.startsWith("number_science_")?"扣點規則已儲存":"贈點規則已儲存");
     }, { busy: "儲存中…", success: "已儲存" });
     await loadPointRules();
   } catch (error) {
