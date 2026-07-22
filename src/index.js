@@ -588,6 +588,36 @@ async function app(request, env, ctx) {
     });
   }
 
+  if (request.method === "POST" && url.pathname === "/v1/points/mlm-balance") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    const body = (await readJson(request)) || {};
+    const idToken = String(body.idToken || "").trim();
+    if (!idToken) return badRequest("LINE ID Token is required");
+    try {
+      const endpoint = String(env.MLM_MEMBER_POINTS_URL || "https://mlm.fangwl591021.workers.dev/api/ai-wear/member-points");
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          idToken,
+          displayName: member.displayName || "",
+          pictureUrl: member.pictureUrl || "",
+          aiWearPointChannelKey: "oa1",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      const balance = Number(payload.data?.balance);
+      if (!response.ok || payload.status !== "success" || !Number.isFinite(balance)) {
+        return json({ success: false, error: payload.message || "康立智能 K點讀取失敗" }, response.status === 401 ? 401 : 502);
+      }
+      return json({ success: true, balance, pointChannelKey: payload.data?.pointChannelKey || "oa1" });
+    } catch (error) {
+      console.error("MLM point proxy failed", error);
+      return json({ success: false, error: "康立智能 K點服務暫時無法連線" }, 502);
+    }
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/points/wallet/qr") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
