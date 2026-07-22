@@ -112,6 +112,46 @@ function badRequest(message) {
   return json({ success: false, error: message }, 400);
 }
 
+function officialTallLiffHtml(env, requestUrl) {
+  const liffId = String(env.OFFICIAL_LIFF_ID || "2007221311-nEOHqNxK");
+  const url = new URL(requestUrl);
+  let page = url.searchParams.get("page") || "";
+  const liffState = url.searchParams.get("liff.state");
+  if (!page && liffState) {
+    try {
+      page = new URL(liffState, url.origin).searchParams.get("page") || "";
+    } catch {
+      page = "";
+    }
+  }
+  const officialPages = {
+    home: "https://www.k-link.com.tw/",
+    about: "https://www.k-link.com.tw/about-us%E8%B5%B0%E9%80%B2%E5%BA%B7%E7%AB%8B",
+    news: "https://www.k-link.com.tw/news-%E6%9C%80%E6%96%B0%E6%B6%88%E6%81%AF",
+    products: "https://www.k-link.com.tw/products-%E7%94%A2%E5%93%81%E7%B8%BD%E8%A6%BD",
+    video: "https://www.k-link.com.tw/video%E5%BD%B1%E9%9F%B3%E5%B0%88%E5%8D%80",
+  };
+  const target = officialPages[page] || officialPages.home;
+  return new Response(`<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>康立官方網站</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>*{box-sizing:border-box}html,body{min-height:100%;margin:0;background:#f7f4ed;color:#203329;font-family:system-ui,"Noto Sans TC",sans-serif}body{display:grid;place-items:center;padding:24px}main{width:min(320px,100%);text-align:center}.spinner{width:38px;height:38px;margin:0 auto 18px;border:4px solid #dfe9df;border-top-color:#328c45;border-radius:50%;animation:spin .8s linear infinite}h1{margin:0;font-size:21px}p{margin:10px 0 20px;color:#6c776f;line-height:1.6}a{display:inline-block;padding:11px 18px;border-radius:10px;background:#328c45;color:#fff;font-weight:800;text-decoration:none}@keyframes spin{to{transform:rotate(360deg)}}</style>
+</head>
+<body><main><div class="spinner"></div><h1>正在開啟康立官方網站</h1><p>將以 Tall 視窗瀏覽，關閉後會回到行動入口。</p><a id="continue" href=${JSON.stringify(target)}>繼續前往</a></main>
+<script>
+  const LIFF_ID=${JSON.stringify(liffId)};
+  const TARGET=${JSON.stringify(target)};
+  (async()=>{
+    try{await liff.init({liffId:LIFF_ID});}catch(error){console.warn("Official LIFF init failed",error);}
+    location.replace(TARGET);
+  })();
+</script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+}
+
 function scheduleContactCrmInsights(env, ctx, userId, id) {
   const task=(async()=>{
     const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
@@ -236,6 +276,9 @@ function courseCheckinCompactLiffHtml(env, origin) {
 
 async function app(request, env, ctx) {
   const url = new URL(request.url);
+  if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/official") {
+    return officialTallLiffHtml(env, url.toString());
+  }
   const publicCardPath = url.pathname.match(/^\/c\/([A-Za-z0-9_-]+)$/);
   if (request.method === "GET" && publicCardPath) {
     return Response.redirect(`${url.origin}/?publicCard=${encodeURIComponent(publicCardPath[1])}`, 302);
