@@ -587,3 +587,18 @@ body.template-drawer-open{overflow:hidden}
 .card-library-delete{border:1px solid #efc3cc;border-radius:8px;background:#fff5f6;color:#b83f57;padding:7px 10px;font-weight:800;white-space:nowrap;cursor:pointer}
 .card-library-delete:hover{background:#ffe8ec}
 .card-library-delete:disabled{opacity:.55;cursor:wait}
+
+
+/* Temporarily disabled admin modules: retain implementation and data, hide every UI entry. */
+.nav-item[data-page="courses"],
+.nav-item[data-page="carousel"],
+[data-go="courses"],
+[data-go="carousel"],
+.metrics article[hidden] {
+  display: none !important;
+}
+.mlm-top-return {
+  border-color: #9dddb7;
+  background: #effbf4;
+  color: #087a39;
+}
