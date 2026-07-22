@@ -214,3 +214,41 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
   .collection-editor .contact-card-form label.full,
   .collection-review .contact-card-form label.full{grid-column:auto}
 }
+
+
+/* Personal calendar: MLM is the source of truth; member-specific status stays local. */
+.portal-menu{grid-template-columns:repeat(6,minmax(0,1fr))}
+.portal-menu button{font-size:11px}
+.personal-calendar-card,.personal-calendar-agenda{margin:14px 0;border:1px solid #eadde1;border-radius:18px;background:#fff;box-shadow:0 8px 24px #5b23300a;overflow:hidden}
+.personal-calendar-toolbar{display:grid;grid-template-columns:44px 1fr 44px;align-items:center;padding:16px 14px;background:linear-gradient(135deg,#fff9f5,#f7fff9);text-align:center}
+.personal-calendar-toolbar button{width:40px;height:40px;border:1px solid #e3d6d9;border-radius:50%;background:#fff;color:#8f5364;font-size:28px;line-height:1;cursor:pointer}
+.personal-calendar-toolbar small,.personal-calendar-agenda header small{display:block;color:#b45a74;font-size:11px;font-weight:900;letter-spacing:1.5px}
+.personal-calendar-toolbar h2,.personal-calendar-agenda h2{margin:3px 0 0;color:#172b4d;font-size:21px}
+.personal-calendar-week,.personal-calendar-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;padding:0 12px}
+.personal-calendar-week{padding-top:12px;color:#8a96a7;font-size:11px;font-weight:800;text-align:center}
+.personal-calendar-grid{padding-top:8px;padding-bottom:14px}
+.personal-calendar-empty,.personal-calendar-day{aspect-ratio:1;min-width:0}
+.personal-calendar-day{position:relative;border:0;border-radius:12px;background:transparent;color:#334155;font:750 13px/1 inherit;cursor:pointer}
+.personal-calendar-day:hover{background:#f9f1f4}
+.personal-calendar-day.today{box-shadow:inset 0 0 0 1px #d895a8}
+.personal-calendar-day.selected{background:#b65d79;color:#fff;box-shadow:0 5px 12px #a44b6830}
+.personal-calendar-day b{position:absolute;right:4px;top:3px;min-width:15px;height:15px;padding:0 3px;border-radius:99px;background:#e8f8ee;color:#08783b;font:900 9px/15px inherit}
+.personal-calendar-day.selected b{background:#fff;color:#a84f6b}
+.personal-calendar-day i{position:absolute;bottom:5px;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:#0dbb59}
+.personal-calendar-day.selected i{background:#fff}
+.personal-calendar-sync-note{padding:11px 16px;border-top:1px solid #f2e8eb;background:#fffafa;color:#667085;font-size:12px}
+.personal-calendar-sync-note span{color:#06b653;margin-right:5px}
+.personal-calendar-agenda{padding:16px}
+.personal-calendar-agenda>header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.personal-calendar-agenda>header button{border:1px solid #dce8e0;border-radius:999px;background:#f0fbf4;color:#08783b;padding:8px 13px;font-weight:850;cursor:pointer}
+.personal-calendar-event{display:grid;grid-template-columns:78px 1fr;gap:13px;padding:15px 0;border-top:1px solid #eef1f5}
+.personal-calendar-event:first-of-type{border-top:0}
+.personal-calendar-event-time{display:grid;align-content:start;gap:7px}
+.personal-calendar-event-time b{color:#172b4d;font-size:13px}
+.personal-calendar-event-time span{justify-self:start;padding:4px 7px;border-radius:999px;background:#edf8f1;color:#08783b;font-size:10px;font-weight:900}
+.personal-calendar-event-copy{min-width:0}
+.personal-calendar-event-copy small{color:#b35672;font-weight:850}
+.personal-calendar-event-copy h3{margin:4px 0 7px;color:#172b4d;font-size:17px;line-height:1.35}
+.personal-calendar-event-copy p{margin:3px 0;color:#536277;font-size:13px;line-height:1.5;word-break:break-word}
+.personal-calendar-no-event,.personal-calendar-loading{padding:26px 18px;text-align:center;color:#7a8798}
+@media(max-width:420px){.portal-menu button{font-size:10px}.portal-menu-icon svg{width:21px;height:21px}.personal-calendar-week,.personal-calendar-grid{gap:2px;padding-left:8px;padding-right:8px}.personal-calendar-event{grid-template-columns:70px 1fr}}
