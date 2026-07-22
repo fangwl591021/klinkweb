@@ -190,3 +190,27 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
 /* 名片五大標籤下方的智能配對歷史 */
 .contact-match-history{margin:20px 0 4px;padding:20px;border:1px solid #e5e8ee;border-radius:18px;background:#fff}.contact-match-history-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:13px}.contact-match-history-heading small{color:#b35a70;font-weight:900}.contact-match-history-heading h3{margin:3px 0 0;color:#172638;font-size:21px}.contact-match-history-heading>span{padding:5px 9px;border-radius:999px;background:#f5edf0;color:#a24d62;font-size:12px;font-weight:900}.contact-match-history-list{display:grid;gap:12px}.contact-match-history-list article{display:grid;grid-template-columns:58px 1fr;gap:13px;padding:15px;border:1px solid #eee4e7;border-radius:15px;background:#fffaf9}.contact-match-history-score{display:flex;height:58px;align-items:baseline;justify-content:center;padding-top:10px;border-radius:15px;background:#2b1d20;color:#fff}.contact-match-history-score strong{font-size:23px}.contact-match-history-score small{font-size:11px}.contact-match-history-list h4{margin:0;color:#243143;font-size:15px;line-height:1.45}.contact-match-history-list p{margin:6px 0 9px;color:#66575c;line-height:1.6}.contact-match-history-list footer{display:flex;flex-wrap:wrap;gap:6px}.contact-match-history-list footer span,.contact-match-history-list footer time{padding:4px 7px;border-radius:7px;background:#f3ecee;color:#8d5a67;font-size:11px}.contact-match-history-list footer time{background:#f4f5f7;color:#68717d}
 @media(max-width:430px){.contact-match-history{padding:15px}.contact-match-history-list article{grid-template-columns:50px 1fr;padding:12px}.contact-match-history-score{height:50px;padding-top:8px}.contact-match-history-score strong{font-size:20px}}
+
+
+/* 名片編輯：解除巢狀 Grid 將整份表單壓進半欄的問題，長欄位改用整列。 */
+.collection-editor .business-card-form>.contact-card-form,
+.collection-review .contact-card-form{grid-column:1/-1;width:100%;max-width:none;margin-top:4px}
+.collection-editor .contact-card-form,
+.collection-review .contact-card-form{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;row-gap:2px}
+.collection-editor .contact-card-form label,
+.collection-review .contact-card-form label{min-width:0;font-size:14px;line-height:1.45}
+.collection-editor .contact-card-form input,
+.collection-review .contact-card-form input{display:block;width:100%;min-width:0;min-height:52px;margin:6px 0 15px;padding:13px 14px;border-radius:12px;font-size:16px;font-weight:600;line-height:1.35;text-overflow:clip}
+.collection-editor .contact-card-form textarea,
+.collection-review .contact-card-form textarea{display:block;width:100%;min-width:0;min-height:118px;margin:6px 0 15px;padding:13px 14px;border-radius:12px;font-size:16px;line-height:1.55}
+.collection-editor .business-card-form>.btn.full{grid-column:1/-1;min-height:52px;font-size:16px}
+.collection-editor .contact-card-form input:focus,
+.collection-editor .contact-card-form textarea:focus,
+.collection-review .contact-card-form input:focus,
+.collection-review .contact-card-form textarea:focus{border-color:#b96072;outline:3px solid #b9607220}
+@media(max-width:520px){
+  .collection-editor .contact-card-form,
+  .collection-review .contact-card-form{grid-template-columns:1fr;column-gap:0}
+  .collection-editor .contact-card-form label.full,
+  .collection-review .contact-card-form label.full{grid-column:auto}
+}
