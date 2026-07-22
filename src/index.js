@@ -439,6 +439,14 @@ function courseCheckinCompactLiffHtml(env, origin) {
 
 async function app(request, env, ctx) {
   const url = new URL(request.url);
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (url.pathname === "/admin" || url.pathname === "/admin/")
+  ) {
+    const adminUrl = new URL("/admin.html", url.origin);
+    adminUrl.search = url.search;
+    return Response.redirect(adminUrl.toString(), 302);
+  }
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/official") {
     return officialTallLiffHtml(env, url.toString());
   }
@@ -584,7 +592,8 @@ async function app(request, env, ctx) {
   if (request.method === "GET" && url.pathname === "/v1/me") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    return json({ success: true, member });
+    const adminAccess = await getAdminAccess(env.DB, member.userId, env.ADMIN_LINE_SUBJECTS);
+    return json({ success: true, member: { ...member, adminAccess } });
   }
 
   if (request.method === "GET" && url.pathname === "/v1/cards/me") {
