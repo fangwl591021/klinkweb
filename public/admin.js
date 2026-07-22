@@ -305,7 +305,7 @@ $("#logout").addEventListener("click", () => {
   localStorage.removeItem("klinkweb_session");
   location.href = "/";
 });
-$("#ruleForm").addEventListener("submit", (event) =>
+$("#ruleForm")?.addEventListener("submit", (event) =>
   submitForm(event, "/v1/admin/point-rules", () => ({
     eventType: $("#ruleEvent").value.trim(),
     points: Number($("#rulePoints").value),
@@ -314,16 +314,16 @@ $("#ruleForm").addEventListener("submit", (event) =>
   })).then(() => loadPointRules()),
 );
 const ruleFrequencyLabel = { once:"僅一次", daily:"每日一次", per_completion:"完成給一次" };
-const ruleEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"簽到打卡", course_registered:"課程報名", attendance_verified:"課程簽到", referral_attendance_reward:"所屬會員完成獎勵", task_completed:"任務完成", admin_points_grant:"後台贈點", admin_points_deduct:"後台扣點", admin_points_backfill:"補登舊點數", daily_ad_view:"簽到觀看", daily_ad_view_completed:"簽到觀看", daily_view:"簽到觀看" };
+const ruleEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"簽到打卡", course_registered:"課程報名", attendance_verified:"課程簽到", referral_attendance_reward:"所屬會員完成獎勵", task_completed:"任務完成", number_science_full_report:"数字科学完整報告扣點", number_science_other_report:"数字科学其餘報告扣點", card_collection_reward:"收藏名片成功贈點", admin_points_grant:"後台贈點", admin_points_deduct:"後台扣點", admin_points_backfill:"補登舊點數", daily_ad_view:"簽到觀看", daily_ad_view_completed:"簽到觀看", daily_view:"簽到觀看" };
 async function loadPointRules() {
   const container = $("#ruleList");
   if (!container) return;
   try {
     const data = await api("/v1/admin/point-rules");
-    const fixedOnce = new Set(["member_joined", "registration_completed"]);
     container.innerHTML = data.rules.length ? data.rules.map((rule) => {
-      const fixed = fixedOnce.has(rule.event_type);
-      return `<form class="rule-row" data-rule-id="${rule.id}"><div class="rule-event" data-event-type="${rule.event_type}">${ruleEventLabel[rule.event_type] || rule.event_type}<small>${rule.event_type}</small></div><label>點數<input data-rule-field="points" type="number" min="0" value="${Number(rule.points)}"></label><label>發點頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${fixed && key !== "once" ? "disabled" : ""}>${label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存</button></form>`;
+      const serviceRule=["number_science_full_report","number_science_other_report","card_collection_reward"].includes(rule.event_type);
+      const pointLabel=rule.event_type.startsWith("number_science_")?"扣除點數":"贈送點數";
+      return `<form class="rule-row" data-rule-id="${rule.id}"><div class="rule-event" data-event-type="${rule.event_type}">${ruleEventLabel[rule.event_type] || rule.event_type}<small>${rule.event_type}</small></div><label>${pointLabel}<input data-rule-field="points" type="number" min="${serviceRule?1:0}" value="${Number(rule.points)}"></label><label>執行頻率<select data-rule-field="frequency">${Object.entries(ruleFrequencyLabel).map(([key,label]) => `<option value="${key}" ${rule.award_frequency === key ? "selected" : ""} ${serviceRule && key !== "per_completion" ? "disabled" : ""}>${label}</option>`).join("")}</select></label><label>狀態<select data-rule-field="status">${["draft","active","paused","archived"].map((value) => `<option value="${value}" ${rule.status === value ? "selected" : ""}>${value === "draft" ? "草稿" : value === "active" ? "啟用" : value === "paused" ? "暫停" : "封存"}</option>`).join("")}</select></label><button class="rule-save" type="submit">儲存</button></form>`;
     }).join("") : '<p class="muted">尚未建立點數規則。</p>';
   } catch (error) {
     container.innerHTML = `<p class="danger">${error.message}</p>`;
@@ -352,7 +352,7 @@ $("#ruleList").addEventListener("submit", async (event) => {
 $("#refreshRules").addEventListener("click", (event) =>
   withButtonFeedback(event.currentTarget, loadPointRules, { busy:"整理中…", success:"已更新" }),
 );
-$("#reconcilePoints").addEventListener("click", async () => {
+$("#reconcilePoints")?.addEventListener("click", async () => {
   const button = $("#reconcilePoints");
   if (!confirm("將依目前啟用規則補發尚未入帳的既有完成條件；已入帳資料不會重複發點。是否繼續？")) return;
   button.disabled = true;
