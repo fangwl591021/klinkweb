@@ -118,7 +118,48 @@ const POINT_RULE_EVENTS = new Set([
   'attendance_verified',
   'referral_attendance_reward',
   'task_completed',
+  'number_science_full_report',
+  'number_science_other_report',
+  'card_collection_reward',
 ]);
+
+const CANCELLED_POINT_RULE_EVENTS = [
+  'daily_ad_checkin',
+  'member_joined',
+  'referral_attendance_reward',
+  'registration_completed',
+];
+
+async function ensureServicePointRules(db) {
+  await db.batch([
+    db.prepare(`INSERT OR IGNORE INTO point_rules
+      (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
+      VALUES ('pointrule_number_science_full','program_main','number_science_full_report',50,NULL,'per_completion','active','v1')`),
+    db.prepare(`INSERT OR IGNORE INTO point_rules
+      (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
+      VALUES ('pointrule_number_science_other','program_main','number_science_other_report',10,NULL,'per_completion','active','v1')`),
+    db.prepare(`INSERT OR IGNORE INTO point_rules
+      (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
+      VALUES ('pointrule_card_collection','program_main','card_collection_reward',10,NULL,'per_completion','active','v1')`),
+    db.prepare(`UPDATE point_rules SET status='archived',updated_at=CURRENT_TIMESTAMP
+      WHERE program_id='program_main' AND event_type IN ('daily_ad_checkin','member_joined','referral_attendance_reward','registration_completed')
+        AND status!='archived'`),
+  ]);
+}
+
+async function servicePointPricing(db) {
+  await ensureServicePointRules(db);
+  const rows=await db.prepare(`SELECT event_type,points,status FROM point_rules
+    WHERE program_id='program_main' AND event_type IN ('number_science_full_report','number_science_other_report','card_collection_reward')
+    ORDER BY updated_at DESC`).all();
+  const active=new Map();
+  for(const row of rows.results || [])if(!active.has(row.event_type)&&row.status==='active')active.set(row.event_type,Number(row.points));
+  return {
+    fullReport: Number.isInteger(active.get('number_science_full_report')) ? active.get('number_science_full_report') : 50,
+    otherReport: Number.isInteger(active.get('number_science_other_report')) ? active.get('number_science_other_report') : 10,
+    cardCollectionReward: Number.isInteger(active.get('card_collection_reward')) ? active.get('card_collection_reward') : 0,
+  };
+}
 
 function badRequest(message) {
   return json({ success: false, error: message }, 400);
@@ -258,6 +299,7 @@ async function proxyNumberScienceRequest(env, member, body = {}) {
   if (!lineUserId) return json({ success: false, error: '找不到 LINE 會員身份，請重新登入' }, 401);
 
   const action = String(body.action || 'generate').trim().toLowerCase();
+  const pricing = await servicePointPricing(env.DB);
   const payload = { action, lineUserId };
   if (action === 'generate') {
     if (!member.profileCompletedAt || !member.birthday) {
@@ -270,6 +312,7 @@ async function proxyNumberScienceRequest(env, member, body = {}) {
       return json({ success: false, error: '請選擇本次報告使用的性別' }, 400);
     }
     payload.requestType = Number(body.requestType);
+    payload.pointCost = payload.requestType === 1 ? pricing.fullReport : pricing.otherReport;
     payload.consent = body.consent === true;
     payload.self = {
       name: member.displayName || '',
@@ -299,7 +342,7 @@ async function proxyNumberScienceRequest(env, member, body = {}) {
     if (!response.ok || result.status !== 'success') {
       return json({ success: false, error: String(result.message || result.error || '数字科学服務暫時無法使用') }, response.status || 502);
     }
-    return json({ success: true, ...result });
+    return json({ success: true, pricing, ...result });
   } catch (error) {
     console.error('Number science MLM proxy failed', error);
     return json({ success: false, error: '数字科学服務暫時無法連線' }, 502);
@@ -1483,9 +1526,11 @@ async function app(request, env, ctx) {
       return json({ success: true, url: `${url.origin}/v1/checkin-template/images/${id}`, size: file.size }, 201);
     }
     if (request.method === "GET" && url.pathname === "/v1/admin/point-rules") {
+      await ensureServicePointRules(env.DB);
       const rules = await env.DB.prepare(`
         SELECT id, event_type, points, award_frequency, status, rule_version, created_at, updated_at
         FROM point_rules WHERE program_id = 'program_main'
+          AND event_type NOT IN ('daily_ad_checkin','member_joined','referral_attendance_reward','registration_completed')
         ORDER BY event_type ASC, updated_at DESC
       `).all();
       return json({ success: true, rules: rules.results || [] });
