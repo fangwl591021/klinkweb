@@ -113,6 +113,7 @@ function badRequest(message) {
 }
 
 function officialTallLiffHtml(env, requestUrl) {
+  const liffId = String(env.OFFICIAL_LIFF_ID || "2007221311-nEOHqNxK");
   const url = new URL(requestUrl);
   let page = url.searchParams.get("page") || "";
   const liffState = url.searchParams.get("liff.state");
@@ -137,10 +138,26 @@ function officialTallLiffHtml(env, requestUrl) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>康立官方網站</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#fff}iframe{display:block;width:100%;height:100%;border:0;background:#fff}.loading{position:fixed;inset:0;z-index:1;display:grid;place-items:center;background:#f7f4ed;color:#203329;font:700 16px/1.5 system-ui,"Noto Sans TC",sans-serif;pointer-events:none}.loading::before{content:"";position:absolute;width:38px;height:38px;margin-top:-58px;border:4px solid #dfe9df;border-top-color:#328c45;border-radius:50%;animation:spin .8s linear infinite}.loading.hidden{display:none}@keyframes spin{to{transform:rotate(360deg)}}</style>
 </head>
-<body><div id="loading" class="loading">正在載入康立官方網站…</div><iframe id="officialSite" src=${JSON.stringify(target)} title="康立官方網站" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
-<script>document.querySelector("#officialSite").addEventListener("load",()=>document.querySelector("#loading").classList.add("hidden"));</script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+<body><div id="loading" class="loading">正在開啟康立官方網站…</div><iframe id="officialSite" title="康立官方網站" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+<script>
+  const LIFF_ID=${JSON.stringify(liffId)};
+  const TARGET=${JSON.stringify(target)};
+  const frame=document.querySelector("#officialSite");
+  const loading=document.querySelector("#loading");
+  frame.addEventListener("load",()=>loading.classList.add("hidden"));
+  (async()=>{
+    try{
+      await liff.init({liffId:LIFF_ID});
+      frame.src=TARGET;
+    }catch(error){
+      console.error("Official LIFF init failed",error);
+      loading.textContent="LIFF 開啟失敗，請關閉後重新嘗試。";
+    }
+  })();
+</script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 function scheduleContactCrmInsights(env, ctx, userId, id) {
