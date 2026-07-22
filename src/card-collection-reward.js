@@ -76,6 +76,26 @@ export async function queueAndFulfillCardCollectionReward(env, userId, cardId) {
   catch (error) { console.warn('Card collection reward queued for retry', error); return { status:'pending', points:CARD_COLLECTION_REWARD_POINTS }; }
 }
 
+export async function reconcileMemberCardCollectionRewards(env, userId, limit = 5) {
+  await ensureCardCollectionRewardTable(env.DB);
+  // 只補送已通過新版圖片指紋防重、且 OCR 已完成的名片；不追溯舊資料。
+  const rows=await env.DB.prepare(`SELECT cc.id contact_card_id
+    FROM contact_cards cc
+    JOIN card_import_events cie ON cie.id=cc.source_event_id
+    JOIN card_import_fingerprints cif ON cif.event_id=cie.id AND cif.user_id=cc.scanner_user_id
+    LEFT JOIN card_collection_rewards reward
+      ON reward.user_id=cc.scanner_user_id AND reward.contact_card_id=cc.id
+    WHERE cc.scanner_user_id=? AND cc.status='active' AND cie.status='created'
+      AND cif.status='completed' AND reward.contact_card_id IS NULL
+    ORDER BY cc.created_at DESC LIMIT ?`).bind(userId,Math.max(1,Math.min(Number(limit)||5,10))).all();
+  let completed=0;
+  for(const row of rows.results || []){
+    const result=await queueAndFulfillCardCollectionReward(env,userId,row.contact_card_id);
+    if(result.status==='completed')completed+=1;
+  }
+  return {scanned:(rows.results || []).length,completed};
+}
+
 export async function retryPendingCardCollectionRewards(env, limit = 10) {
   await ensureCardCollectionRewardTable(env.DB);
   const rows = await env.DB.prepare(`
