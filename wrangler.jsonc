@@ -22,6 +22,12 @@
     }
   ],
   "triggers": { "crons": ["*/10 * * * *"] },
+  "services": [
+    {
+      "binding": "MLM_WORKER",
+      "service": "mlm"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "MEDIA",
