@@ -339,6 +339,9 @@ async function app(request, env, ctx) {
       picture: String(body.pictureUrl || lineProfile.picture || ""),
       name: String(body.displayName || lineProfile.name || ""),
     }, body.inviteToken);
+    if (result.referralCreated) {
+      result.member = await getMember(env.DB, result.member.userId) || result.member;
+    }
     if (result.member.status !== "active")
       return json({ success: false, error: "Member is unavailable" }, 403);
     if (result.created) {
