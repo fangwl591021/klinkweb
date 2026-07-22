@@ -607,7 +607,11 @@ async function mlmMemberPointBalance(fallbackBalance=0){
     const payload=await api("/v1/points/mlm-balance",{method:"POST",body:JSON.stringify({idToken:idToken||"",accessToken})});
     if(!Number.isFinite(Number(payload.balance)))throw new Error("康立智能 K點讀取失敗");
     sessionStorage.removeItem("klinkweb_point_reauth_attempted");
-    return Number(payload.balance);
+    return {
+      balance:Number(payload.balance),
+      entries:Array.isArray(payload.entries)?payload.entries:[],
+      ledgerSource:payload.ledgerSource||"mlm-mother-site",
+    };
   }catch(error){
     console.warn("MLM member point sync failed",error);
     mlmPointSyncError=error?.message||"康立智能 K點同步失敗";
@@ -616,8 +620,8 @@ async function mlmMemberPointBalance(fallbackBalance=0){
 }
 async function home() {
   const wallet = await api("/v1/points/wallet");
-  const syncedPointBalance = await mlmMemberPointBalance(wallet.wallet.balance);
-  const syncedPointText = syncedPointBalance == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointBalance);
+  const syncedPointSnapshot = await mlmMemberPointBalance(wallet.wallet.balance);
+  const syncedPointText = syncedPointSnapshot == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointSnapshot.balance);
   layout(
     `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>康立智能 K點</span><strong>${syncedPointText}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame klink-mobile-home"><header class="klink-home-hero"><div class="klink-brand"><span>K</span><div><b>康立全球</b><small>K-LINK GLOBAL</small></div></div><p>從健康生活、會員服務到數位工具，開啟你的康立智慧行動入口。</p><a href="${officialLiffUrl("home")}">前往康立官方網站 <span>↗</span></a></header><a class="klink-official-banner" href="${officialLiffUrl("home")}" aria-label="開啟康立官方網站"><img src="https://static.wixstatic.com/media/cbd8fa_dcb55697bcfd4ed9a50beded41e35b9d~mv2.png/v1/fill/w_2016,h_745,al_c,q_90,usm_0.66_1.00_0.01,enc_avif,quality_auto/%E9%87%91%E7%89%8C%E7%8D%8EFB-Banner.png" alt="康立全球金牌獎官方 Banner" loading="lazy"></a><div class="klink-home-grid"><a href="${officialLiffUrl("about")}"><i>01</i><b>走進康立</b><small>認識康立優勢與發展理念</small><span>›</span></a><a href="${officialLiffUrl("news")}"><i>02</i><b>最新訊息</b><small>掌握公告、活動與行事曆</small><span>›</span></a><a href="${officialLiffUrl("products")}"><i>03</i><b>產品總覽</b><small>瀏覽康立產品與計畫內容</small><span>›</span></a><a href="${officialLiffUrl("video")}"><i>04</i><b>影音專區</b><small>觀看品牌、產品與活動影片</small><span>›</span></a></div><section class="klink-home-philosophy"><small>K-LINK CULTURE</small><h2>5S × 3I 經營理念</h2><p>群策群力、與時俱進，透過前瞻策略、完善管理與創新工具，讓每位夥伴都能連結更大的事業舞台。</p><div><span>遠見</span><span>使命</span><span>表揚</span><span>感恩</span><span>歸屬</span></div></section><div class="klink-home-actions"><a class="line" href="https://lin.ee/omhFayP" target="_blank" rel="noopener noreferrer"><b>加入 LINE 客服</b><small>諮詢產品與會員服務</small></a><a href="https://nms.k-link.com.tw/ml.php" target="_blank" rel="noopener noreferrer"><b>康立會員入口</b><small>進入既有會員系統</small></a></div></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">分享邀請名片</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
@@ -673,32 +677,32 @@ async function showWalletQr(qrId, expiryId) {
 }
 async function wallet() {
   const r = await api("/v1/points/wallet");
-  const syncedPointBalance = await mlmMemberPointBalance(r.wallet.balance);
-  const syncedPointText = syncedPointBalance == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointBalance);
-  const entries = r.wallet.entries || [];
+  const syncedPointSnapshot = await mlmMemberPointBalance(r.wallet.balance);
+  const syncedPointText = syncedPointSnapshot == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointSnapshot.balance);
+  // 明細與上方餘額都只使用 MLM 母站資料，不再混用 klinkweb 本機點數流水。
+  const entries = (syncedPointSnapshot?.entries || []).map((entry) => ({
+    event_type:entry.eventName || "康立智能 K點",
+    event_content:entry.eventContent || "",
+    delta:Number(entry.amount || 0),
+    balance_after:Number(entry.balanceAfter || 0),
+    created_at:entry.datetime || "",
+  }));
   const referrals = r.referrals || [];
-  const regularEntries = entries.filter((x) => x.event_type !== "referral_attendance_reward");
-  const rewardGroups = Object.values(entries.filter((x) => x.event_type === "referral_attendance_reward").reduce((groups, entry) => {
-    const key = `${entry.business_date || String(entry.created_at || "").slice(0, 10)}:${entry.event_reference}`;
-    if (!groups[key]) groups[key] = { date: entry.business_date || String(entry.created_at || "").slice(0, 10), title: entry.activity_title || "課程／任務", points: 0, entries: [] };
-    groups[key].points += Number(entry.delta || 0);
-    groups[key].entries.push(entry);
-    return groups;
-  }, {}));
+  const regularEntries = entries;
   const regularRows = regularEntries.map((x) => {
-        const delta = Number(x.delta || 0);
-        return `<div class="item wallet-entry"><div><b>${esc(pointEventLabel[x.event_type] || x.event_type)}</b><span class="muted">${esc(x.created_at)}</span></div><b class="wallet-delta ${delta < 0 ? "negative" : ""}">${delta > 0 ? "+" : ""}${delta}</b></div>`;
-      }).join("");
-  const rewardRows = rewardGroups.map((group) => `<details class="wallet-reward-group"><summary><div><b>所屬會員完成獎勵｜${esc(group.title)}</b><span class="muted">${esc(group.date)}｜${group.entries.length} 人</span></div><b class="wallet-delta">+${group.points}</b></summary><div class="wallet-reward-members">${group.entries.map((entry) => `<div><span>${esc(entry.referred_display_name || "受邀會員")}</span><small>${esc(entry.created_at)}｜+${Number(entry.delta || 0)}</small></div>`).join("")}</div></details>`).join("");
+    const delta = Number(x.delta || 0);
+    const meta = [x.created_at, x.event_content, `餘額 ${format(x.balance_after)} K點`].filter(Boolean).join("｜");
+    return `<div class="item wallet-entry"><div><b>${esc(x.event_type)}</b><span class="muted">${esc(meta)}</span></div><b class="wallet-delta ${delta < 0 ? "negative" : ""}">${delta > 0 ? "+" : ""}${delta}</b></div>`;
+  }).join("");
   const entryRows = entries.length
-    ? rewardRows + regularRows
-    : '<p class="muted wallet-empty">尚無點數紀錄</p>';
+    ? regularRows
+    : `<p class="muted wallet-empty">${mlmPointSyncError ? "MLM 母站明細暫時無法讀取" : "MLM 母站尚無點數紀錄"}</p>`;
   const referralRows = referrals.length
     ? referrals.map((x) => `<div class="item wallet-referral"><div><b>${esc(x.display_name || "新會員")}</b><span class="muted">會員編號：${esc(x.member_number || "尚未完成註冊")}</span></div><span class="muted">${esc(x.created_at)}</span></div>`).join("")
     : '<p class="muted wallet-empty">尚無邀約成功紀錄</p>';
   layout(
     `<div class="card"><div class="muted">康立智能 K點</div><div class="points">${syncedPointText}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div>
-    <details class="card wallet-disclosure"><summary><span>點數明細</span><span class="wallet-summary-meta">共 ${regularEntries.length + rewardGroups.length} 組 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${entryRows}</div></details>
+    <details class="card wallet-disclosure"><summary><span>點數明細</span><span class="wallet-summary-meta">共 ${regularEntries.length} 筆 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${entryRows}</div></details>
     <details class="card wallet-disclosure"><summary><span>分享成果清單</span><span class="wallet-summary-meta">共 ${referrals.length} 人 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${referralRows}</div></details>`,
   );
   $("#walletQr").onclick = () => showWalletQr("qr", "expire");
