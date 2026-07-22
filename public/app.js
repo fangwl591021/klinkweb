@@ -1517,8 +1517,9 @@ function bindScanInputs() {
     try { await withActionFeedback(button,async()=>{
       const form=new FormData();form.append("front",collectionScanFiles[0]);if(collectionScanFiles[1])form.append("back",collectionScanFiles[1]);
       const upload=await fetch("/v1/card-collection/imports",{method:"POST",headers:{authorization:`Bearer ${state.token}`},body:form});const uploaded=await upload.json();if(!upload.ok)throw new Error(uploaded.error||"名片上傳失敗");
-      await api(`/v1/card-collection/imports/${encodeURIComponent(uploaded.import.id)}/submit`,{method:"POST",body:"{}"});
+      const submitted=await api(`/v1/card-collection/imports/${encodeURIComponent(uploaded.import.id)}/submit`,{method:"POST",body:"{}"});
       collectionScanFiles=[]; await cardCollection();
+      if(submitted.reward?.status==="pending_validation")alert("名片辨識完成並確認不是重複收藏後，將自動贈送 10 K點。");
     },{busy:"送出中…",success:"已送出，AI 分析中"}); } catch(error){alert(error.message);}
   };
 }
@@ -1528,8 +1529,11 @@ function showCollectionReview(eventId, card, confidence) {
   $("#cancelCollectionReview").onclick=()=>cardCollection();
   $("#saveScannedCard").onclick=async()=>{const button=$("#saveScannedCard");try{await withActionFeedback(button,async()=>{
     const save=async(action="")=>{const response=await fetch(`/v1/card-collection/imports/${encodeURIComponent(eventId)}/confirm`,{method:"POST",headers:{"content-type":"application/json",authorization:`Bearer ${state.token}`},body:JSON.stringify({card:readCollectionForm("scan"),duplicateAction:action})});const body=await response.json();return {response,body};};
-    let result=await save();if(result.response.status===409&&result.body.code==="duplicate_contact"&&confirm(`收藏名單已有「${result.body.duplicate?.displayName || "相同名片"}」，要用這次資料更新嗎？`))result=await save("update");if(!result.response.ok)throw new Error(result.body.error||"名片儲存失敗");
+    let result=await save();if(result.response.status===409&&result.body.code==="duplicate_contact"&&confirm(`收藏名單已有「${result.body.duplicate?.displayName || "相同名片"}」，要用這次資料更新嗎？更新既有名片不會重複贈點。`))result=await save("update");if(!result.response.ok)throw new Error(result.body.error||"名片儲存失敗");
     collectionScanFiles=[];await cardCollection();
+    if(result.body.updated)alert("已更新既有名片；重複收藏不贈點。");
+    else if(result.body.reward?.status==="completed")alert("收藏成功，已贈送 10 K點。");
+    else alert("收藏成功，10 K點正在入帳，系統會自動重試。");
   },{busy:"儲存中…",success:"已收藏"});}catch(error){alert(error.message)}};
 }
 
@@ -1643,7 +1647,7 @@ async function smartMatch() {
 
 async function cardCollection(search = "") {
   state.tab="cardCollection";
-  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；最多正反兩面。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><span id="collectionCount">載入中…</span></div><p class="muted collection-system-note">AI 五大標籤由系統端背景分析與補齊；無需在用戶端操作。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
+  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><span id="collectionCount">載入中…</span></div><p class="muted collection-system-note">AI 五大標籤由系統端背景分析與補齊；無需在用戶端操作。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
   bindScanInputs();
   try {
     collectionCards=(await api(`/v1/card-collection?search=${encodeURIComponent(search)}`)).cards;
