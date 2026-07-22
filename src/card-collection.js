@@ -214,6 +214,16 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
     const result=await recognizeWithOpenAI(apiKey,model,images);
     if(!result.isBusinessCard)throw new Error('這張圖片看起來不是名片，請重新拍攝');
     const card=cleanCard(result);
+    const duplicate=await findDuplicate(db,userId,card,contact.id);
+    if(duplicate){
+      await Promise.all([event.front_r2_key,event.back_r2_key].filter(Boolean).map((key)=>bucket.delete(key)));
+      await db.batch([
+        db.prepare("UPDATE contact_cards SET status='archived',front_r2_key='',updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?").bind(contact.id,userId),
+        db.prepare("UPDATE card_import_events SET status='duplicate',contact_card_id=?,front_r2_key='',back_r2_key='',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(duplicate.id,eventId),
+      ]);
+      await updateCardImportFingerprint(db,eventId,'duplicate');
+      return {created:false,duplicate:true,card:rowToCard(duplicate)};
+    }
     const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
     await db.batch([
       db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'queued',cards:{},error:''}),contact.id,userId),
@@ -224,8 +234,9 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
       db.prepare("UPDATE card_import_events SET status='failed',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId),
       db.prepare("UPDATE contact_cards SET display_name=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind('名片辨識未完成',withInsightMeta(contact,{status:'failed',error:error.message || 'OCR 辨識失敗'}),contact.id),
     ]);
+    await updateCardImportFingerprint(db,eventId,'failed');
     console.error('Background card OCR failed',error);
-    return;
+    return {created:false,failed:true};
   }
   // OCR 已成功寫入後才執行五大標籤。標籤失敗只能改變 _crmInsights，
   // 不得回滾或覆蓋已辨識完成的名片聯絡資料。
@@ -234,6 +245,9 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
   } catch(error) {
     console.error('Post-OCR CRM insight scheduling failed',error);
   }
+  await updateCardImportFingerprint(db,eventId,'completed');
+  const saved=await db.prepare('SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=?').bind(contact.id,userId).first();
+  return {created:true,duplicate:false,card:rowToCard(saved)};
 }
 
 export async function queueLegacyFailedImportRetries(db, limit = 3) {
@@ -287,6 +301,36 @@ export async function queueSystemCrmInsightBackfill(db, limit = 6) {
   return {queued:candidates.length,tasks:candidates.map((row)=>({id:row.id,userId:row.scanner_user_id}))};
 }
 
+async function ensureCardImportFingerprintTable(db) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS card_import_fingerprints (
+      user_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      event_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(user_id, fingerprint)
+    )
+  `).run();
+}
+async function cardImportFingerprint(buffers) {
+  const total=buffers.reduce((sum,buffer)=>sum+4+buffer.byteLength,0);
+  const joined=new Uint8Array(total);
+  const view=new DataView(joined.buffer);
+  let offset=0;
+  for(const buffer of buffers){
+    view.setUint32(offset,buffer.byteLength);offset+=4;
+    joined.set(new Uint8Array(buffer),offset);offset+=buffer.byteLength;
+  }
+  const digest=await crypto.subtle.digest('SHA-256',joined);
+  return Array.from(new Uint8Array(digest),(byte)=>byte.toString(16).padStart(2,'0')).join('');
+}
+async function updateCardImportFingerprint(db,eventId,status) {
+  await ensureCardImportFingerprintTable(db);
+  await db.prepare('UPDATE card_import_fingerprints SET status=?,updated_at=CURRENT_TIMESTAMP WHERE event_id=?').bind(status,eventId).run();
+}
+
 export async function createImport(db, bucket, userId, form) {
   const files = ['front','back'].map((key)=>form.get(key)).filter((file)=>file instanceof File && file.size);
   if (!files.length || files.length > 2) throw new Error('請選擇名片正面，最多可加一張背面');
@@ -296,11 +340,26 @@ export async function createImport(db, bucket, userId, form) {
   }
   const count = await db.prepare("SELECT COUNT(*) count FROM card_import_events WHERE scanner_user_id = ? AND created_at >= datetime('now','-1 day')").bind(userId).first();
   if (Number(count?.count || 0) >= 20) throw new Error('今日名片辨識已達 20 次，請明日再試');
+  const buffers=await Promise.all(files.map((file)=>file.arrayBuffer()));
+  const fingerprint=await cardImportFingerprint(buffers);
+  await ensureCardImportFingerprintTable(db);
+  const previous=await db.prepare('SELECT status,created_at FROM card_import_fingerprints WHERE user_id=? AND fingerprint=? LIMIT 1').bind(userId,fingerprint).first();
+  if(previous && previous.status!=='failed' && (previous.status!=='pending' || Date.parse(previous.created_at)>Date.now()-2*60*60*1000)){
+    const error=new Error('這張名片圖片已上傳過，不能重複收藏或領點');error.code='duplicate_upload';throw error;
+  }
+  if(previous)await db.prepare('DELETE FROM card_import_fingerprints WHERE user_id=? AND fingerprint=?').bind(userId,fingerprint).run();
   const id = newId('card_import');
   const keys = files.map((_, index)=>`card-collections/${userId}/${id}/${index ? 'back' : 'front'}.webp`);
-  await Promise.all(files.map(async(file,index)=>bucket.put(keys[index], await file.arrayBuffer(), { httpMetadata:{contentType:file.type} })));
-  await db.prepare('INSERT INTO card_import_events (id, scanner_user_id, front_r2_key, back_r2_key, front_content_type) VALUES (?, ?, ?, ?, ?)').bind(id,userId,keys[0],keys[1] || '',files[0].type).run();
-  return { id, imageCount:files.length };
+  await db.prepare("INSERT INTO card_import_fingerprints (user_id,fingerprint,event_id,status) VALUES (?,?,?,'pending')").bind(userId,fingerprint,id).run();
+  try {
+    await Promise.all(files.map((file,index)=>bucket.put(keys[index],buffers[index],{httpMetadata:{contentType:file.type}})));
+    await db.prepare('INSERT INTO card_import_events (id, scanner_user_id, front_r2_key, back_r2_key, front_content_type) VALUES (?, ?, ?, ?, ?)').bind(id,userId,keys[0],keys[1] || '',files[0].type).run();
+    return { id, imageCount:files.length };
+  } catch(error) {
+    await Promise.all(keys.map((key)=>bucket.delete(key).catch(()=>null)));
+    await db.prepare('DELETE FROM card_import_fingerprints WHERE user_id=? AND fingerprint=?').bind(userId,fingerprint).run().catch(()=>null);
+    throw error;
+  }
 }
 
 export async function recognizeImport(db, bucket, userId, eventId, apiKey, model) {
@@ -321,6 +380,7 @@ export async function recognizeImport(db, bucket, userId, eventId, apiKey, model
     // 辨識失敗不保留無用途的原始照片；使用者重新拍攝即可，避免 R2 累積孤兒檔案。
     await Promise.all([event.front_r2_key,event.back_r2_key].filter(Boolean).map((key)=>bucket.delete(key)));
     await db.prepare("UPDATE card_import_events SET front_r2_key='', back_r2_key='' WHERE id=?").bind(eventId).run();
+    await updateCardImportFingerprint(db,eventId,'failed');
     throw error;
   }
 }
@@ -333,6 +393,7 @@ export async function confirmImport(db, bucket, userId, eventId, payload = {}) {
   if (self?.id) {
     await Promise.all([event.front_r2_key,event.back_r2_key].filter(Boolean).map((key)=>bucket.delete(key)));
     await db.prepare("UPDATE card_import_events SET status='rejected',front_r2_key='',back_r2_key='',updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId).run();
+    await updateCardImportFingerprint(db,eventId,'rejected');
     const error=new Error('這是你自己的名片，請回「我的名片」編輯'); error.code='self_card'; throw error;
   }
   const duplicate = await findDuplicate(db,userId,card);
@@ -346,6 +407,7 @@ export async function confirmImport(db, bucket, userId, eventId, payload = {}) {
   if (event.back_r2_key) await bucket.delete(event.back_r2_key);
   if (duplicate && sourceKey) await bucket.delete(sourceKey);
   await db.prepare('UPDATE card_import_events SET status=?, contact_card_id=?, back_r2_key=\'\', updated_at=CURRENT_TIMESTAMP WHERE id=?').bind(duplicate?'updated':'created',id,eventId).run();
+  await updateCardImportFingerprint(db,eventId,duplicate?'duplicate':'completed');
   return { card:rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first()), updated:Boolean(duplicate) };
 }
 
