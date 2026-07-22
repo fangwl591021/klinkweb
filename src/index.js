@@ -87,6 +87,7 @@ import {
   queueSystemMemberCrmInsightBackfill,
 } from "./member-crm-insights.js";
 import { syncMlmCourses } from "./mlm-course-sync.js";
+import { matchContacts } from "./smart-matching.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -505,6 +506,20 @@ async function app(request, env, ctx) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     return json({ success: true, cards: await listContacts(env.DB, member.userId, url.searchParams.get("search") || "") });
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/card-collection/match") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const body = (await readJson(request)) || {};
+      const contacts = await listContacts(env.DB, member.userId, "");
+      const openAIKey = await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
+      const matches = await matchContacts({ contacts, member, query: body.query, apiKey: openAIKey, model: env.OPENAI_CARD_MODEL });
+      return json({ success: true, matches });
+    } catch (error) {
+      return badRequest(error.message || "智能配對失敗");
+    }
   }
 
   if (request.method === "POST" && url.pathname === "/v1/card-collection/imports") {
