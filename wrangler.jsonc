@@ -11,7 +11,8 @@
   "vars": {
     "LIFF_ID": "2007221311-QPueR5eF",
     "CHECKIN_LIFF_ID": "2007221311-QPueR5eF",
-    "LINE_LOGIN_CHANNEL_ID": "2007221311"
+    "LINE_LOGIN_CHANNEL_ID": "2007221311",
+    "MLM_COURSES_URL": "https://mlm.fangwl591021.workers.dev/api/public/klink-courses"
   },
   "d1_databases": [
     {
