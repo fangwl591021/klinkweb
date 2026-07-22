@@ -209,6 +209,74 @@ async function currentMember(request, env) {
   return getMember(env.DB, session.sub);
 }
 
+async function currentMemberLineSubject(db, userId) {
+  const row = await db.prepare(`
+    SELECT provider_subject
+    FROM external_identities
+    WHERE platform_user_id = ?
+      AND provider = 'line_login'
+      AND verification_status = 'verified'
+    LIMIT 1
+  `).bind(userId).first();
+  return String(row?.provider_subject || '').trim();
+}
+
+async function proxyNumberScienceRequest(env, member, body = {}) {
+  if (!env.MLM_WORKER || typeof env.MLM_WORKER.fetch !== 'function') {
+    return json({ success: false, error: '数字科学服務尚未連線' }, 503);
+  }
+  const lineUserId = await currentMemberLineSubject(env.DB, member.userId);
+  if (!lineUserId) return json({ success: false, error: '找不到 LINE 會員身份，請重新登入' }, 401);
+
+  const action = String(body.action || 'generate').trim().toLowerCase();
+  const payload = { action, lineUserId };
+  if (action === 'generate') {
+    if (!member.profileCompletedAt || !member.birthday) {
+      return json({ success: false, error: '請先完成會員註冊與生日資料' }, 400);
+    }
+    const memberGender = member.gender === 'male' ? 0 : member.gender === 'female' ? 1 : null;
+    const requestedGender = body.selfGender === 0 || body.selfGender === '0' ? 0
+      : body.selfGender === 1 || body.selfGender === '1' ? 1 : memberGender;
+    if (requestedGender === null) {
+      return json({ success: false, error: '請選擇本次報告使用的性別' }, 400);
+    }
+    payload.requestType = Number(body.requestType);
+    payload.consent = body.consent === true;
+    payload.self = {
+      name: member.displayName || '',
+      email: member.email || '',
+      mobile: member.phone || '',
+      birthDate: member.birthday,
+      gender: requestedGender,
+    };
+    if (body.person && typeof body.person === 'object') {
+      payload.person = {
+        name: String(body.person.name || '').trim(),
+        birthDate: String(body.person.birthDate || '').trim(),
+        gender: body.person.gender,
+      };
+    }
+  } else if (action === 'get') {
+    payload.id = String(body.id || '').trim();
+  }
+
+  try {
+    const response = await env.MLM_WORKER.fetch('https://mlm.internal/api/internal/number-science/reports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.status !== 'success') {
+      return json({ success: false, error: String(result.message || result.error || '数字科学服務暫時無法使用') }, response.status || 502);
+    }
+    return json({ success: true, ...result });
+  } catch (error) {
+    console.error('Number science MLM proxy failed', error);
+    return json({ success: false, error: '数字科学服務暫時無法連線' }, 502);
+  }
+}
+
 async function currentAdmin(request, env) {
   const member = await currentMember(request, env);
   if (!member) return null;
@@ -660,6 +728,13 @@ async function app(request, env, ctx) {
       wallet,
       referrals: referralResult.results || [],
     });
+  }
+
+  if (url.pathname === "/v1/number-science/reports" && (request.method === "GET" || request.method === "POST")) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    const body = request.method === "GET" ? { action: "list" } : ((await readJson(request)) || {});
+    return proxyNumberScienceRequest(env, member, body);
   }
 
   if (request.method === "POST" && url.pathname === "/v1/points/mlm-balance") {
