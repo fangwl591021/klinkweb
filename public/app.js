@@ -223,6 +223,7 @@ async function login() {
     return;
   }
   clearLiffLoginPending();
+  if(state.invite&&!(await ensureInviteFriendship()))return;
   const status = $("#loginStatus");
   if (status) status.textContent = "LINE 身份已確認，正在建立會員資料…";
   const idToken = liff.getIDToken();
@@ -240,6 +241,11 @@ async function login() {
   state.token = r.sessionToken;
   localStorage.setItem("klinkweb_session", state.token);
   state.member = r.member;
+  const invitedReferrer = state.invite ? r.member?.systemReferrer : null;
+  if(state.invite){
+    const referrerLabel=invitedReferrer?.displayName||invitedReferrer?.memberNumber||"";
+    setTimeout(()=>alert(referrerLabel?`已確認加入康立智能好友\n推薦關係已確立：${referrerLabel}`:"已確認加入康立智能好友，但這組邀請碼未建立新的推薦關係。"),0);
+  }
   sessionStorage.removeItem("klinkweb_invite");
   // 驗證完成後必須同步清除記憶體中的邀請狀態；否則 render() 會判定為
   // 「已登入會員再次開啟邀約」，又回到同一張登入卡，形成無限循環。
@@ -248,6 +254,42 @@ async function login() {
   if (state.courseSession) state.tab = "courses";
   history.replaceState({}, "", state.tab === "daily" ? `${location.pathname}?tab=daily` : location.pathname);
   await render();
+}
+function renderInviteFriendGate(message="請先加入康立智能好友，系統才會完成推薦關係綁定。"){
+  $("#app").innerHTML=`<section class="invite-friend-gate"><div class="invite-friend-gate-icon">＋</div><h2>加入康立智能後繼續</h2><p>${esc(message)}</p><button class="btn" id="requestKlinkFriend">加入好友並繼續</button><button class="btn alt" id="retryKlinkFriend">我已加入，重新檢查</button><small>加入好友後會留在目前流程，不會進入官方帳號聊天室。</small></section>`;
+  $("#requestKlinkFriend").onclick=async()=>{
+    const button=$("#requestKlinkFriend");
+    await withActionFeedback(button,async()=>{
+      try{if(typeof liff.requestFriendship==="function")await liff.requestFriendship();}catch(error){console.warn("LIFF requestFriendship failed",error);}
+      if(await ensureInviteFriendship(false))return login();
+      throw new Error("尚未確認加入康立智能好友，請完成 LINE 加好友提示後再試一次。");
+    },{busy:"好友確認中…",success:"已確認"}).catch((error)=>alert(error.message));
+  };
+  $("#retryKlinkFriend").onclick=async()=>{
+    const button=$("#retryKlinkFriend");
+    await withActionFeedback(button,async()=>{
+      if(await ensureInviteFriendship(false))return login();
+      throw new Error("目前仍未確認為康立智能好友。");
+    },{busy:"重新檢查中…",success:"已確認"}).catch((error)=>alert(error.message));
+  };
+}
+async function ensureInviteFriendship(renderOnFail=true){
+  try{
+    await initLiffOnce();
+    if(!liff.isLoggedIn())return false;
+    if(typeof liff.getFriendship!=="function"){
+      if(renderOnFail)renderInviteFriendGate("目前的 LINE 環境無法確認好友狀態，請從 LINE 重新開啟此邀請。");
+      return false;
+    }
+    const friendship=await liff.getFriendship();
+    if(friendship?.friendFlag)return true;
+    if(renderOnFail)renderInviteFriendGate();
+    return false;
+  }catch(error){
+    console.warn("Klink invitation friendship check failed",error);
+    if(renderOnFail)renderInviteFriendGate("好友狀態確認失敗，請確認此 LIFF 已連結康立智能官方帳號後再試一次。");
+    return false;
+  }
 }
 async function startLogin() {
   if (loginInProgress) return;
