@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMatchingCandidates, resolveMatchingResults } from '../src/smart-matching.js';
+import { buildMatchingCandidates, matchContacts, resolveMatchingResults } from '../src/smart-matching.js';
 
 const contacts = [{
   id: 'c1', displayName: '王小明', companyName: '示範公司', jobTitle: '顧問', department: '業務',
@@ -26,4 +26,20 @@ test('matching results reject invalid and duplicate indexes', () => {
   ] });
   assert.deepEqual(results.map((item) => item.card.id), ['c2']);
   assert.equal(results[0].score, 91);
+});
+
+test('smart matching uses the MLM service binding without exposing an API key', async () => {
+  let requestUrl = '';
+  const provider = {
+    async fetch(url, init) {
+      requestUrl = url;
+      const payload = JSON.parse(init.body);
+      assert.equal(payload.request.input[0].role, 'user');
+      assert.equal(init.headers.authorization, undefined);
+      return Response.json({ output_text: JSON.stringify({ matches:[{ index:0, score:88, reason:'企業顧問服務符合目前合作需求' }] }) });
+    },
+  };
+  const result = await matchContacts({ contacts, member:{displayName:'測試會員'}, query:'尋找企業顧問', apiKey:provider });
+  assert.equal(requestUrl, 'https://mlm.internal/api/internal/ai/responses');
+  assert.equal(result[0].card.id, 'c1');
 });
