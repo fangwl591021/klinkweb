@@ -86,6 +86,7 @@ import {
   queueMemberCrmInsight,
   queueSystemMemberCrmInsightBackfill,
 } from "./member-crm-insights.js";
+import { syncMlmCourses } from "./mlm-course-sync.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -1336,6 +1337,11 @@ async function app(request, env, ctx) {
   }
 
   if (request.method === "GET" && url.pathname === "/v1/courses") {
+    try {
+      await syncMlmCourses(env);
+    } catch (error) {
+      console.error("MLM course sync before listing failed", error);
+    }
     return json({
       success: true,
       sessions: await listPublicCourseSessions(env.DB),
@@ -1506,6 +1512,15 @@ async function runSystemCrmInsightBackfill(env) {
   }
 }
 
+async function runMlmCourseSync(env) {
+  try {
+    const result = await syncMlmCourses(env);
+    console.log("MLM course sync completed", result);
+  } catch (error) {
+    console.error("Scheduled MLM course sync failed", error);
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS")
@@ -1519,5 +1534,6 @@ export default {
   },
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(runSystemCrmInsightBackfill(env));
+    ctx.waitUntil(runMlmCourseSync(env));
   },
 };
