@@ -46,7 +46,7 @@ function outputText(result = {}) {
 
 async function callAiResponses(provider, body) {
   if (!provider) throw new Error('MLM AI 服務尚未連線');
-  const internal = provider && typeof provider.fetch === 'function';
+  const internal = typeof provider !== 'string';
   const response = internal
     ? await provider.fetch('https://mlm.internal/api/internal/ai/responses', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ request: body }),
