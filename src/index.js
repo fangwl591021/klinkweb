@@ -895,7 +895,13 @@ async function app(request, env, ctx) {
         });
         return json({ success: false, error: upstreamMessage ? `${upstreamMessage}（${diagnostic}）` : `康立智能 K點讀取失敗（${diagnostic}）` }, response.status === 401 ? 401 : 502);
       }
-      return json({ success: true, balance, pointChannelKey: payload.data?.pointChannelKey || "oa1" });
+      return json({
+        success: true,
+        balance,
+        entries: Array.isArray(payload.data?.items) ? payload.data.items : [],
+        ledgerSource: payload.data?.ledgerSource || "mlm-mother-site",
+        pointChannelKey: payload.data?.pointChannelKey || "oa1",
+      });
     } catch (error) {
       console.error("MLM point proxy failed", error);
       return json({ success: false, error: "康立智能 K點服務暫時無法連線" }, 502);
