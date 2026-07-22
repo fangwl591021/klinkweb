@@ -477,7 +477,7 @@ function showBirthdayRequiredDialog() {
   dialog.innerHTML = `<div class="birthday-required-sheet" role="dialog" aria-modal="true" aria-labelledby="birthdayPromptTitle"><span class="zodiac-prompt-icon">✦</span><h2 id="birthdayPromptTitle">先填寫生日，才能查看星座運勢</h2><p>生日只用於判斷你的星座、生肖與生命靈數，不會公開給其他會員。</p><div class="birthday-required-actions"><button class="btn alt" data-zodiac-prompt-close>稍後再說</button><button class="btn" data-zodiac-prompt-fill>前往填寫生日</button></div></div>`;
   document.body.appendChild(dialog);
   dialog.querySelector("[data-zodiac-prompt-close]").onclick = () => dialog.remove();
-  dialog.querySelector("[data-zodiac-prompt-fill]").onclick = async () => { dialog.remove(); state.tab = "profile"; await render(); setTimeout(() => $("#birthday")?.focus(), 0); };
+  dialog.querySelector("[data-zodiac-prompt-fill]").onclick = async () => { dialog.remove(); sessionStorage.setItem("klinkweb_after_profile", "zodiac"); state.tab = "profile"; await render(); setTimeout(() => $("#birthday")?.focus(), 0); };
 }
 const numberScienceProducts = [
   { type:1, key:"complete", title:"完整報告", description:"個人核心數字、特質與完整解析", cost:50, person:false },
@@ -510,6 +510,10 @@ async function openNumberScienceHistory(id, button) {
 function openNumberSciencePurchase(requestType) {
   const product=numberScienceProducts.find(item=>item.type===Number(requestType));
   if(!product)return;
+  if(!state.member?.profileCompletedAt||!state.member?.birthday){
+    showBirthdayRequiredDialog();
+    return;
+  }
   document.querySelector(".number-science-purchase-dialog")?.remove();
   const memberGender=state.member?.gender==="male"?"0":state.member?.gender==="female"?"1":"";
   const dialog=document.createElement("div");
@@ -1695,7 +1699,9 @@ async function profile(required = false) {
         }), { busy: required ? "註冊處理中…" : "儲存中…", success: required ? "註冊完成" : "已儲存" })
       ).member;
       alert(required ? "註冊完成" : "已儲存");
-      state.tab = state.courseSession ? "courses" : "home";
+      const afterProfile = sessionStorage.getItem("klinkweb_after_profile");
+      sessionStorage.removeItem("klinkweb_after_profile");
+      state.tab = afterProfile === "zodiac" ? "zodiac" : state.courseSession ? "courses" : "home";
       render();
     } catch (e) {
       alert(e.message);
