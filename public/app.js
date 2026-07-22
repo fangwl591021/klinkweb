@@ -137,7 +137,6 @@ const pointEventLabel = { member_joined:"加入會員", registration_completed:"
 const FIXED_CARD_IMAGE_LINK = "https://lin.ee/ngaHmLM";
 const DEFAULT_CARD_CHAT_ALT_TEXT = "健康新世代、從康立開始";
 const AI_WEAR_LIFF_URL = "https://liff.line.me/2007221311-snSAlddv?aiWearTry=1";
-const MLM_MEMBER_POINTS_URL = "https://mlm.fangwl591021.workers.dev/api/ai-wear/member-points";
 const cardChatAltText = (card) => String(card?.chatAltText || DEFAULT_CARD_CHAT_ALT_TEXT).trim().slice(0, 300) || DEFAULT_CARD_CHAT_ALT_TEXT;
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
@@ -502,11 +501,10 @@ async function mlmMemberPointBalance(fallbackBalance=0){
       }
       throw new Error("LINE 登入未提供 ID Token，無法核對康立智能 K點");
     }
-    const response=await fetch(MLM_MEMBER_POINTS_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken,displayName:state.member?.displayName||"",pictureUrl:state.member?.pictureUrl||"",aiWearPointChannelKey:"oa1"})});
-    const payload=await response.json().catch(()=>({}));
-    if(!response.ok||payload.status!=="success"||!Number.isFinite(Number(payload.data?.balance)))throw new Error(payload.message||"康立智能 K點讀取失敗");
+    const payload=await api("/v1/points/mlm-balance",{method:"POST",body:JSON.stringify({idToken})});
+    if(!Number.isFinite(Number(payload.balance)))throw new Error("康立智能 K點讀取失敗");
     sessionStorage.removeItem("klinkweb_point_reauth_attempted");
-    return Number(payload.data.balance);
+    return Number(payload.balance);
   }catch(error){
     console.warn("MLM member point sync failed",error);
     return null;
