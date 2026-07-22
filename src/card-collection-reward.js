@@ -1,6 +1,9 @@
 const CARD_COLLECTION_REWARD_POINTS = 10;
 
 async function configuredCardCollectionRewardPoints(db) {
+  await db.prepare(`INSERT OR IGNORE INTO point_rules
+    (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
+    VALUES ('pointrule_card_collection','program_main','card_collection_reward',10,NULL,'per_completion','active','v1')`).run();
   const rule=await db.prepare(`SELECT points FROM point_rules
     WHERE program_id='program_main' AND event_type='card_collection_reward' AND status='active'
     ORDER BY updated_at DESC LIMIT 1`).first();
