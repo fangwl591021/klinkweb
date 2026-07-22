@@ -199,7 +199,7 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
+  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], smartMatch:["智能配對","輸入合作需求，從你的名片收藏中找出適合的人選。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
   const [featureTitle,featureHint] = featureCopy[state.tab] || ["康立行動入口","會員服務與活動入口。"];
   const headerAction = state.tab === "card" ? `<button class="feature-header-action" data-home-action="cardCollection">名片收藏</button>` : state.tab === "cardCollection" ? `<button class="feature-header-action" data-home-action="card">我的名片</button>` : "";
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div>${headerAction}</header>`;
@@ -354,6 +354,7 @@ async function render() {
   if (state.tab === "card") return card();
   if (state.tab === "zodiac") return zodiac();
   if (state.tab === "cardCollection") return cardCollection();
+  if (state.tab === "smartMatch") return smartMatch();
   if (state.tab === "profile") return profile();
   return home();
 }
@@ -376,6 +377,8 @@ async function smartCheckin() {
   $("#retrySmartCheckin")?.addEventListener("click", () => { state.smartCheckin = true; smartCheckin(); });
 }
 const portalIcon = (name) => ({
+  cardCollection: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="11" r="2.2"/><path d="M5.8 16c.7-1.7 1.8-2.6 3.2-2.6s2.5.9 3.2 2.6M14.2 9.5h3.4M14.2 12.5h3.4"/></svg>`,
+  smartMatch: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="3"/><circle cx="16" cy="9" r="3"/><path d="M3.5 18c.6-3 2.1-4.6 4.5-4.6 1.7 0 3 .8 3.8 2.3.9-1.5 2.3-2.3 4.2-2.3 2.4 0 3.9 1.6 4.5 4.6"/><path d="m12 3 .5 1.2 1.3.1-1 .8.3 1.3-1.1-.7-1.1.7.3-1.3-1-.8 1.3-.1z"/></svg>`,
   courses: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2c1.3 2.3 3 3.3 5.2 3.6-1.6 1.6-2.2 3.3-1.8 5.5-2.1-.6-3.5-.1-5.4 1.4.1-2.4-.8-4-2.8-5.4 2.3-.6 3.8-2 4.8-5.2Z"/><path d="M18.8 14.5c.5.9 1.2 1.3 2.1 1.5-.7.6-.9 1.3-.7 2.2-.8-.3-1.4 0-2.2.5.1-.9-.3-1.6-1.1-2.1.9-.2 1.5-.8 1.9-1.9Z"/></svg>`,
   daily: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="4.6"/><path d="m9.1 12.6-1.4 7 4.3-2 4.3 2-1.4-7"/><path d="m12 6.5.75 1.7 1.85.15-1.4 1.22.42 1.8L12 10.4l-1.62 1.02.42-1.8-1.4-1.22 1.85-.15Z"/></svg>`,
   aiWear: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.2h3.1l1.1 4.1h3.2l1.1-4.1 1.1 4.1h3.2l1.1-4.1h3.1"/><path d="M6.6 10.2c.5-1.1 1.4-1.7 2.6-1.7s2.1.6 2.8 1.7c.7-1.1 1.6-1.7 2.8-1.7s2.1.6 2.6 1.7"/><path d="m18.5 3.5.5 1.4 1.5.1-1.2.9.4 1.5-1.2-.9-1.3.9.5-1.5-1.2-.9 1.5-.1z"/></svg>`,
@@ -482,7 +485,7 @@ async function zodiac() {
   const [traits, zodiacTip] = zodiacProfiles[fortune.zodiac.name] || ["獨特、真誠、持續成長","保持自己的步調。"];
   layout(`<section class="zodiac-fortune-card zodiac-comprehensive"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>今日整體</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-score-grid"><div><span>事業</span><b>${fortune.career}</b></div><div><span>人際</span><b>${fortune.relation}</b></div><div><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div></div><div class="zodiac-insight-grid"><article><small>基本性格</small><h3>${esc(fortune.zodiac.name)}</h3><p>${esc(traits)}</p><p class="muted">${esc(zodiacTip)}</p></article><article><small>生肖特質</small><h3>生肖 ${esc(fortune.chinese.name)}</h3><p>${esc(fortune.chinese.trait)}</p><p class="muted">把你的優勢用在最值得經營的關係與目標上。</p></article><article><small>生命靈數</small><h3>${fortune.life.number}｜${esc(fortune.life.title)}</h3><p>${esc(fortune.life.advice)}</p></article></div><div class="zodiac-action"><small>今日行動建議</small><b>選一件最想推進的事情，安排一個能在今天完成的小步驟。</b></div><p class="muted small zodiac-note">內容為個人化生活建議與娛樂參考；每日內容會依日期更新。</p></section>`);
 }
-const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="courses"><i class="portal-menu-icon navy">${portalIcon("courses")}</i><span>課程活動</span></button><button data-home-action="daily"><i class="portal-menu-icon coral">${portalIcon("daily")}</i><span>簽到贈點</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
+const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="cardCollection"><i class="portal-menu-icon navy">${portalIcon("cardCollection")}</i><span>名片收藏</span></button><button data-home-action="smartMatch"><i class="portal-menu-icon coral">${portalIcon("smartMatch")}</i><span>智能配對</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function openAiWear(){try{if(window.liff?.isInClient?.()){window.liff.openWindow({url:AI_WEAR_LIFF_URL,external:false});return}}catch{/* Fall back to direct LIFF navigation. */}window.location.href=AI_WEAR_LIFF_URL}
 function openOfficialSite(page="home"){
   document.querySelector("#officialSiteOverlay")?.remove();
@@ -500,7 +503,7 @@ function bindOfficialSiteLinks(){
   const links=[[document.querySelector(".klink-home-hero>a"),"home"],[document.querySelector(".klink-official-banner"),"home"],...Array.from(document.querySelectorAll(".klink-home-grid>a")).map((link,index)=>[link,["about","news","products","video"][index]])];
   links.forEach(([link,page])=>link?.addEventListener("click",(event)=>{event.preventDefault();openOfficialSite(page)}));
 }
-function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":"wallet";await render()}));bindOfficialSiteLinks();$("#copyInvite")?.addEventListener("click",copyInvite)}
+function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":action==="smartMatch"?"smartMatch":"wallet";await render()}));bindOfficialSiteLinks();$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function mlmMemberPointBalance(fallbackBalance=0){
   try{
     mlmPointSyncError="";
@@ -1528,6 +1531,34 @@ async function publicSharedContact(){
     };
     renderVersion(card.selectedVersion || "standard");
   } catch(error) { $("#app").innerHTML=`<section class="center">${esc(error.message||"分享名片不存在或已停止分享")}</section>`; }
+}
+
+async function smartMatch() {
+  state.tab = "smartMatch";
+  layout(`<section class="card smart-match-card"><div class="smart-match-intro"><span>AI</span><div><h2>智能人脈配對</h2><p class="muted">說明你正在尋找的合作夥伴、專業或服務，AI 會從你的私人名片收藏中選出最多 3 位合適人選。</p></div></div><label for="smartMatchQuery">我想尋找</label><textarea id="smartMatchQuery" rows="4" maxlength="300" placeholder="例如：想找熟悉社群行銷、能協助健康品牌拓展年輕客群的合作夥伴"></textarea><div class="smart-match-pool"><span id="smartMatchPool">正在讀取名片收藏…</span><small>電話、Email、地址與私人備註不會傳給 AI</small></div><button class="btn" id="startSmartMatch" disabled>開始智能配對</button></section><section id="smartMatchResults" class="smart-match-results"><div class="card collection-empty">輸入需求後，配對結果會顯示在這裡。</div></section>`);
+  const button = $("#startSmartMatch");
+  try {
+    collectionCards = (await api("/v1/card-collection")).cards || [];
+    $("#smartMatchPool").textContent = collectionCards.length ? `將從 ${collectionCards.length} 張收藏名片中配對` : "名片收藏尚無資料，請先上傳名片";
+    button.disabled = !collectionCards.length;
+  } catch (error) {
+    $("#smartMatchPool").textContent = error.message || "名片收藏讀取失敗";
+  }
+  button.onclick = async () => {
+    const query = $("#smartMatchQuery").value.trim();
+    if (query.length < 2) return alert("請輸入至少 2 個字的配對需求");
+    try {
+      const result = await withActionFeedback(button, () => api("/v1/card-collection/match", { method:"POST", body:JSON.stringify({ query }) }), { busy:"AI 配對中…", success:"配對完成" });
+      const matches = result.matches || [];
+      $("#smartMatchResults").innerHTML = matches.length
+        ? `<div class="smart-match-results-head"><h2>推薦人選</h2><span>${matches.length} 位</span></div>${matches.map(({card,score,reason},index)=>`<button class="card smart-match-result" data-match-card-id="${esc(card.id)}"><span class="smart-match-rank">${index+1}</span><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc((card.displayName||"名").slice(0,1))}</span><span class="smart-match-person"><strong>${esc(card.displayName||"未命名")}</strong><small>${esc([card.companyName,card.jobTitle].filter(Boolean).join("／")||"收藏名片")}</small><p>${esc(reason)}</p></span><b class="smart-match-score">${format(score)}<small>%</small></b></button>`).join("")}`
+        : `<div class="card collection-empty">目前沒有足夠符合需求的人選，換一個更具體的需求再試試看。</div>`;
+      document.querySelectorAll("[data-match-card-id]").forEach((row) => row.onclick = () => showContactEditor(collectionCards.find((card) => card.id === row.dataset.matchCardId)));
+      attachCollectionImages();
+    } catch (error) {
+      alert(error.message || "智能配對失敗");
+    }
+  };
 }
 
 async function cardCollection(search = "") {
