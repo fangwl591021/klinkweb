@@ -242,7 +242,10 @@ export async function queueLegacyFailedImportRetries(db, limit = 3) {
     FROM card_import_events cie
     JOIN contact_cards cc ON cc.id=cie.contact_card_id
     WHERE cie.status='failed' AND cie.front_r2_key!='' AND cc.status='active'
-      AND cc.display_name='名片分析未完成'
+      AND (
+        cc.display_name IN ('名片分析未完成','名片辨識未完成')
+        OR COALESCE(json_extract(cc.versions_json, '$._crmInsights.error'),'') LIKE '%API 金鑰%'
+      )
     ORDER BY cie.updated_at ASC LIMIT ?`).bind(cappedLimit).all();
   return (result.results || []).map((row)=>({eventId:row.event_id,userId:row.scanner_user_id}));
 }
