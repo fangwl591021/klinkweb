@@ -87,7 +87,12 @@ import {
   queueSystemMemberCrmInsightBackfill,
 } from "./member-crm-insights.js";
 import { syncMlmCourses } from "./mlm-course-sync.js";
-import { matchContacts } from "./smart-matching.js";
+import { buildMatchingCandidates, matchContacts } from "./smart-matching.js";
+import {
+  findCachedSmartMatch,
+  listContactSmartMatchHistory,
+  saveSmartMatch,
+} from "./smart-match-history.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -636,25 +641,55 @@ async function app(request, env, ctx) {
     return json({ success: true, cards: await listContacts(env.DB, member.userId, url.searchParams.get("search") || "") });
   }
 
+  const smartMatchHistoryRoute = url.pathname.match(/^\/v1\/card-collection\/([^/]+)\/matching-history$/);
+  if (request.method === "GET" && smartMatchHistoryRoute) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const history = await listContactSmartMatchHistory(env.DB, member.userId, decodeURIComponent(smartMatchHistoryRoute[1]));
+      return json({ success: true, history });
+    } catch (error) {
+      return badRequest(error.message || "智能配對紀錄讀取失敗");
+    }
+  }
+
   if (request.method === "POST" && url.pathname === "/v1/card-collection/match") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try {
       const body = (await readJson(request)) || {};
+      const query = String(body.query || "").trim();
       const contacts = await listContacts(env.DB, member.userId, "");
-      const aiProvider = await resolveCardAiProvider(env);
       const numberScience = await loadNumberScienceMatchingContext(env, member);
+      const requestKey = await sha256(JSON.stringify({
+        version: 2,
+        query: query.replace(/\s+/g, " ").toLocaleLowerCase("zh-TW"),
+        candidates: buildMatchingCandidates(contacts),
+        numberScience: numberScience.text,
+      }));
+      const cached = await findCachedSmartMatch(env.DB, member.userId, requestKey, contacts);
+      if (cached) return json({ success: true, ...cached, cached: true });
+      const aiProvider = await resolveCardAiProvider(env);
       const matches = await matchContacts({
         contacts,
         member,
-        query: body.query,
+        query,
         numberScienceContext: numberScience.text,
         apiKey: aiProvider,
         model: env.OPENAI_CARD_MODEL,
       });
+      await saveSmartMatch(env.DB, {
+        userId: member.userId,
+        requestKey,
+        query,
+        matches,
+        numberScienceUsed: Boolean(numberScience.text),
+        numberScienceReports: numberScience.labels,
+      });
       return json({
         success: true,
         matches,
+        cached: false,
         numberScienceUsed: Boolean(numberScience.text),
         numberScienceReports: numberScience.labels,
       });
