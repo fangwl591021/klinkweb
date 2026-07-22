@@ -1153,6 +1153,28 @@ async function app(request, env, ctx) {
       `).all();
       return json({success:true,cards:rows.results||[]});
     }
+    const adminCardInsightRetryMatch=url.pathname.match(/^\/v1\/admin\/cards\/(personal|collection)\/([^/]+)\/recalculate-insights$/);
+    if(request.method==="POST"&&adminCardInsightRetryMatch){
+      const kind=adminCardInsightRetryMatch[1],cardId=decodeURIComponent(adminCardInsightRetryMatch[2]);
+      if(kind==="collection"){
+        const existing=await env.DB.prepare("SELECT scanner_user_id FROM contact_cards WHERE id=? AND status='active'").bind(cardId).first();
+        if(!existing)return json({success:false,error:"找不到收藏名片"},404);
+        const aiProvider=await resolveCardAiProvider(env);
+        if(!aiProvider)return json({success:false,error:"MLM AI 服務尚未連線"},503);
+        await queueContactCrmInsights(env.DB,existing.scanner_user_id,cardId,true);
+        scheduleContactCrmInsights(env,ctx,existing.scanner_user_id,cardId);
+        await env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.card.insights_recalculated',?)").bind(newId("audit"),admin.userId,existing.scanner_user_id,JSON.stringify({cardId,kind})).run();
+      }else{
+        const existing=await env.DB.prepare("SELECT platform_user_id FROM personal_cards WHERE id=? AND status!='archived'").bind(cardId).first();
+        if(!existing)return json({success:false,error:"找不到會員名片"},404);
+        const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
+        if(!openAIKey)return json({success:false,error:"AI 五大標籤尚未設定 API 金鑰"},503);
+        await queueMemberCrmInsight(env.DB,existing.platform_user_id);
+        scheduleMemberCrmInsights(env,ctx,existing.platform_user_id);
+        await env.DB.prepare("INSERT INTO audit_logs (id,actor_user_id,subject_user_id,action,metadata_json) VALUES (?,?,?,'admin.card.insights_recalculated',?)").bind(newId("audit"),admin.userId,existing.platform_user_id,JSON.stringify({cardId,kind})).run();
+      }
+      return json({success:true,status:"queued"});
+    }
     const adminCardMatch=url.pathname.match(/^\/v1\/admin\/cards\/(personal|collection)\/([^/]+)$/);
     if(request.method==="PATCH"&&adminCardMatch){
       const kind=adminCardMatch[1],cardId=decodeURIComponent(adminCardMatch[2]),body=(await readJson(request))||{};
