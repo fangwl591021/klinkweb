@@ -608,10 +608,24 @@ async function app(request, env, ctx) {
           aiWearPointChannelKey: "oa1",
         }),
       });
-      const payload = await response.json().catch(() => ({}));
+      const responseText = await response.text();
+      let payload = {};
+      try { payload = responseText ? JSON.parse(responseText) : {}; } catch { payload = {}; }
       const balance = Number(payload.data?.balance);
       if (!response.ok || payload.status !== "success" || !Number.isFinite(balance)) {
-        return json({ success: false, error: payload.message || "康立智能 K點讀取失敗" }, response.status === 401 ? 401 : 502);
+        const contentType = response.headers.get("content-type") || "unknown";
+        const upstreamMessage = String(payload.message || payload.error || "").trim();
+        const responseKind = responseText && !Object.keys(payload).length ? "non-json" : "json";
+        const diagnostic = `MLM HTTP ${response.status} / ${responseKind} / ${contentType}`;
+        console.error("MLM point upstream response invalid", {
+          status: response.status,
+          contentType,
+          responseKind,
+          payloadStatus: payload.status || "",
+          hasData: Boolean(payload.data),
+          dataKeys: payload.data && typeof payload.data === "object" ? Object.keys(payload.data) : [],
+        });
+        return json({ success: false, error: upstreamMessage ? `${upstreamMessage}（${diagnostic}）` : `康立智能 K點讀取失敗（${diagnostic}）` }, response.status === 401 ? 401 : 502);
       }
       return json({ success: true, balance, pointChannelKey: payload.data?.pointChannelKey || "oa1" });
     } catch (error) {
