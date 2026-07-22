@@ -93,6 +93,10 @@ import {
   listContactSmartMatchHistory,
   saveSmartMatch,
 } from "./smart-match-history.js";
+import {
+  queueAndFulfillCardCollectionReward,
+  retryPendingCardCollectionRewards,
+} from "./card-collection-reward.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -714,9 +718,15 @@ async function app(request, env, ctx) {
       const eventId=decodeURIComponent(submitBackgroundImport[1]);
       const aiProvider=await resolveCardAiProvider(env);
       const result=await submitImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
-      const task=processImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
-      if (ctx?.waitUntil) ctx.waitUntil(task); else task.catch((error)=>console.error("Background card analysis failed",error));
-      return json({success:true,...result,analysis:"queued"},202);
+      if(!result.existing){
+        const task=(async()=>{
+          const processed=await processImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
+          if(processed?.created) await queueAndFulfillCardCollectionReward(env,member.userId,processed.card.id);
+          return processed;
+        })();
+        if (ctx?.waitUntil) ctx.waitUntil(task); else task.catch((error)=>console.error("Background card analysis failed",error));
+      }
+      return json({success:true,...result,analysis:result.existing?"existing":"queued",reward:result.existing?{status:"duplicate",points:0}:{status:"pending_validation",points:10}},result.existing?200:202);
     } catch(error) { return badRequest(error.message || "名片送出失敗"); }
   }
 
@@ -738,7 +748,10 @@ async function app(request, env, ctx) {
     try {
       const result = await confirmImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(confirmCardImport[1]), (await readJson(request)) || {});
       scheduleContactCrmInsights(env,ctx,member.userId,result.card.id);
-      return json({ success: true, ...result }, result.updated ? 200 : 201);
+      const reward = result.updated
+        ? {status:"duplicate",points:0}
+        : await queueAndFulfillCardCollectionReward(env,member.userId,result.card.id);
+      return json({ success: true, ...result, reward }, result.updated ? 200 : 201);
     } catch (error) {
       return json({ success: false, error: error.message || "名片儲存失敗", code: error.code || "save_failed", duplicate: error.duplicate || null }, error.code ? 409 : 400);
     }
@@ -1838,5 +1851,6 @@ export default {
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(runSystemCrmInsightBackfill(env));
     ctx.waitUntil(runMlmCourseSync(env));
+    ctx.waitUntil(retryPendingCardCollectionRewards(env));
   },
 };
