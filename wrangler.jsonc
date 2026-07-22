@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "klinkweb_member_crm",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "ee6b95aa-08b5-4a46-9dad-d84b527b1207",
       "migrations_dir": "migrations"
     }
   ],
