@@ -441,9 +441,9 @@ async function app(request, env, ctx) {
   const url = new URL(request.url);
   if (
     (request.method === "GET" || request.method === "HEAD") &&
-    (url.pathname === "/admin" || url.pathname === "/admin/")
+    url.pathname === "/admin"
   ) {
-    const adminUrl = new URL("/admin.html", url.origin);
+    const adminUrl = new URL("/admin/", url.origin);
     adminUrl.search = url.search;
     return Response.redirect(adminUrl.toString(), 302);
   }
