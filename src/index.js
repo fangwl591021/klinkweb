@@ -593,7 +593,8 @@ async function app(request, env, ctx) {
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     const body = (await readJson(request)) || {};
     const idToken = String(body.idToken || "").trim();
-    if (!idToken) return badRequest("LINE ID Token is required");
+    const accessToken = String(body.accessToken || "").trim();
+    if (!idToken && !accessToken) return badRequest("LINE credential is required");
     try {
       const endpoint = String(env.MLM_MEMBER_POINTS_URL || "https://mlm.fangwl591021.workers.dev/api/ai-wear/member-points");
       const response = await fetch(endpoint, {
@@ -601,6 +602,7 @@ async function app(request, env, ctx) {
         headers: { "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({
           idToken,
+          accessToken,
           displayName: member.displayName || "",
           pictureUrl: member.pictureUrl || "",
           aiWearPointChannelKey: "oa1",
