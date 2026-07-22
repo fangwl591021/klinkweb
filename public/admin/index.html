@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>康立行動入口｜營運管理中心</title>
-    <link rel="stylesheet" href="/admin.css?v=20260722-2" />
+    <link rel="stylesheet" href="/admin.css?v=20260722-3" />
   </head>
   <body>
     <div class="shell">
@@ -145,65 +145,19 @@
         </section>
 
         <section class="page" data-content="points">
-          <section class="panel form-panel">
-            <div class="panel-head">
-              <div>
-                <h2>新增點數規則</h2>
-                <p>
-                  事件名稱必須與系統事件一致；輪播每日簽到請填
-                  <code>daily_ad_checkin</code>。
-                </p>
-              </div>
-            </div>
-            <form id="ruleForm" class="form-grid">
-              <label
-                >系統事件<select id="ruleEvent" required>
-                  <option value="member_joined">加入會員</option>
-                  <option value="registration_completed">完成註冊</option>
-                  <option value="daily_ad_checkin" selected>每日簽到</option>
-                  <option value="share_referral">分享邀約成功</option>
-                  <option value="course_registered">課程報名</option>
-                  <option value="attendance_verified">課程簽到</option>
-                  <option value="referral_attendance_reward">所屬會員完成獎勵</option>
-                  <option value="task_completed">任務完成</option>
-                </select></label
-              ><label
-                >贈送點數<input
-                  id="rulePoints"
-                  type="number"
-                  min="0"
-                  placeholder="例如 10"
-                  required /></label
-              ><label
-                >發點頻率<select id="ruleFrequency">
-                  <option value="once">僅一次</option>
-                  <option value="daily">每日一次</option>
-                  <option value="per_completion" selected>完成給一次</option>
-                </select></label
-              ><label
-                >啟用狀態<select id="ruleStatus">
-                  <option value="draft">草稿</option>
-                  <option value="active">啟用</option>
-                </select></label
-              ><button class="primary" type="submit">建立點數規則</button>
-            </form>
-          </section>
           <section class="panel">
             <div class="panel-head">
               <div>
-                <h2>既有點數規則</h2>
-                <p>可直接修改點數、發點頻率與啟用狀態；加入會員與完成註冊固定僅一次。</p>
+                <h2>K點規則</h2>
+                <p>數字科學扣點與收藏名片贈點皆以此處設定為準；儲存後立即套用於新交易。</p>
               </div>
               <button class="secondary" type="button" id="refreshRules">重新整理</button>
-              <button class="primary" type="button" id="reconcilePoints">補發既有完成條件</button>
             </div>
             <div id="ruleList" class="rule-list"></div>
           </section>
           <section class="notice-card">
-            <b>目前可用事件</b
-            ><span
-              >member_joined（加入會員）、registration_completed（完成註冊）、share_referral（分享邀約成功）、daily_ad_checkin（輪播簽到）、course_registered（課程報名）、attendance_verified（課程簽到）、referral_attendance_reward（所屬會員完成獎勵）、task_completed（任務完成）。</span
-            >
+            <b>規則說明</b>
+            <span>完整報告與其餘数字科學報告為扣點；收藏名片成功為贈點。已完成或已購買的交易不會因調整規則而重複扣贈點。</span>
           </section>
         </section>
 
@@ -371,6 +325,6 @@
       </section>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-    <script type="module" src="/admin.js?v=20260722-2"></script>
+    <script type="module" src="/admin.js?v=20260722-3"></script>
   </body>
 </html>
