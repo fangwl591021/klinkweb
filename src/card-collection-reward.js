@@ -1,5 +1,13 @@
 const CARD_COLLECTION_REWARD_POINTS = 10;
 
+async function configuredCardCollectionRewardPoints(db) {
+  const rule=await db.prepare(`SELECT points FROM point_rules
+    WHERE program_id='program_main' AND event_type='card_collection_reward' AND status='active'
+    ORDER BY updated_at DESC LIMIT 1`).first();
+  const points=Number(rule?.points);
+  return Number.isInteger(points) && points > 0 ? points : 0;
+}
+
 async function ensureCardCollectionRewardTable(db) {
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS card_collection_rewards (
@@ -27,11 +35,14 @@ async function rewardLineSubject(db, userId) {
 
 export async function queueCardCollectionReward(db, userId, cardId) {
   await ensureCardCollectionRewardTable(db);
+  const points=await configuredCardCollectionRewardPoints(db);
+  if(points<=0)return {queued:false,points:0};
   await db.prepare(`
     INSERT INTO card_collection_rewards (user_id, contact_card_id, points)
     VALUES (?, ?, ?)
     ON CONFLICT(user_id, contact_card_id) DO NOTHING
-  `).bind(userId, cardId, CARD_COLLECTION_REWARD_POINTS).run();
+  `).bind(userId, cardId, points).run();
+  return {queued:true,points};
 }
 
 export async function fulfillCardCollectionReward(env, userId, cardId) {
@@ -52,12 +63,12 @@ export async function fulfillCardCollectionReward(env, userId, cardId) {
     WHERE user_id=? AND contact_card_id=?
       AND (status!='processing' OR updated_at <= datetime('now','-2 minutes'))
   `).bind(userId, cardId).run();
-  if (Number(claim?.meta?.changes || 0) === 0) return { status:'processing', points:CARD_COLLECTION_REWARD_POINTS };
+  if (Number(claim?.meta?.changes || 0) === 0) return { status:'processing', points:Number(reward.points || CARD_COLLECTION_REWARD_POINTS) };
   try {
     const response = await env.MLM_WORKER.fetch('https://mlm.internal/api/internal/klink/card-collection-reward', {
       method:'POST',
       headers:{'content-type':'application/json',accept:'application/json'},
-      body:JSON.stringify({ lineUserId, userId, cardId }),
+      body:JSON.stringify({ lineUserId, userId, cardId, points:Number(reward.points || CARD_COLLECTION_REWARD_POINTS) }),
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || result.status !== 'success') throw new Error(result.message || result.error || '名片贈點失敗');
@@ -71,9 +82,10 @@ export async function fulfillCardCollectionReward(env, userId, cardId) {
 }
 
 export async function queueAndFulfillCardCollectionReward(env, userId, cardId) {
-  await queueCardCollectionReward(env.DB, userId, cardId);
+  const queued=await queueCardCollectionReward(env.DB, userId, cardId);
+  if(!queued.queued)return {status:'disabled',points:0};
   try { return await fulfillCardCollectionReward(env, userId, cardId); }
-  catch (error) { console.warn('Card collection reward queued for retry', error); return { status:'pending', points:CARD_COLLECTION_REWARD_POINTS }; }
+  catch (error) { console.warn('Card collection reward queued for retry', error); return { status:'pending', points:queued.points }; }
 }
 
 export async function reconcileMemberCardCollectionRewards(env, userId, limit = 5) {
