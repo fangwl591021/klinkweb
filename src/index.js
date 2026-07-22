@@ -367,7 +367,8 @@ async function app(request, env, ctx) {
     return json({
       success: true,
       service: "klinkweb-member-crm",
-      version: "0.1.0",
+      version: "20260722-mlm-ai-2",
+      cardAiProvider: env.MLM_WORKER ? "mlm-service" : "local-fallback",
     });
   }
 
@@ -376,6 +377,8 @@ async function app(request, env, ctx) {
       success: true,
       liffId: env.LIFF_ID || "",
       checkinLiffId: env.CHECKIN_LIFF_ID || "",
+      buildVersion: "20260722-mlm-ai-2",
+      cardAiProvider: env.MLM_WORKER ? "mlm-service" : "local-fallback",
       officialAccountUrl: "https://lin.ee/sV9xDLr",
     });
   }
