@@ -479,7 +479,15 @@ function bindPortalActions(){document.querySelectorAll("[data-home-action]").for
 async function mlmMemberPointBalance(fallbackBalance=0){
   try{
     await initLiffOnce();
-    if(!liff.isLoggedIn())return Number(fallbackBalance)||0;
+    if(!liff.isLoggedIn()){
+      // klinkweb 的登入工作階段比 LINE ID Token 長。PC 瀏覽器再次開啟時
+      // 可能仍可進會員中心，卻沒有可供 MLM 核對的 LIFF 身分，因而曾
+      // 錯誤顯示本機點數。補做一次 LINE Login 後，PC/手機都以同一個
+      // LINE UID 查詢康立智能 K 點。
+      markLiffLoginPending();
+      liff.login({redirectUri:liffLoginRedirectUrl()});
+      return Number(fallbackBalance)||0;
+    }
     const idToken=liff.getIDToken();
     if(!idToken)return Number(fallbackBalance)||0;
     const response=await fetch(MLM_MEMBER_POINTS_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idToken,displayName:state.member?.displayName||"",pictureUrl:state.member?.pictureUrl||"",aiWearPointChannelKey:"oa1"})});
@@ -549,6 +557,7 @@ async function showWalletQr(qrId, expiryId) {
 }
 async function wallet() {
   const r = await api("/v1/points/wallet");
+  const syncedPointBalance = await mlmMemberPointBalance(r.wallet.balance);
   const entries = r.wallet.entries || [];
   const referrals = r.referrals || [];
   const regularEntries = entries.filter((x) => x.event_type !== "referral_attendance_reward");
@@ -571,7 +580,7 @@ async function wallet() {
     ? referrals.map((x) => `<div class="item wallet-referral"><div><b>${esc(x.display_name || "新會員")}</b><span class="muted">會員編號：${esc(x.member_number || "尚未完成註冊")}</span></div><span class="muted">${esc(x.created_at)}</span></div>`).join("")
     : '<p class="muted wallet-empty">尚無邀約成功紀錄</p>';
   layout(
-    `<div class="card"><div class="muted">${esc(r.wallet.programName)}</div><div class="points">${r.wallet.balance}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div>
+    `<div class="card"><div class="muted">康立智能 K點</div><div class="points">${format(syncedPointBalance)}</div><button class="btn" id="walletQr">顯示動態錢包 QR Code</button><div id="qr" class="qr"></div><p id="expire" class="muted small"></p></div>
     <details class="card wallet-disclosure"><summary><span>點數明細</span><span class="wallet-summary-meta">共 ${regularEntries.length + rewardGroups.length} 組 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${entryRows}</div></details>
     <details class="card wallet-disclosure"><summary><span>分享成果清單</span><span class="wallet-summary-meta">共 ${referrals.length} 人 <i aria-hidden="true"></i></span></summary><div class="wallet-list">${referralRows}</div></details>`,
   );
