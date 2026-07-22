@@ -136,7 +136,7 @@ if (cardShareModeFromLocation()) sessionStorage.setItem("klinkweb_card_share_mod
 const pointEventLabel = { member_joined:"加入會員", registration_completed:"完成註冊", share_referral:"分享邀約成功", daily_ad_checkin:"每日簽到", course_registered:"課程報名", attendance_verified:"課程簽到", referral_attendance_reward:"所屬會員完成獎勵", task_completed:"完成任務" };
 const FIXED_CARD_IMAGE_LINK = "https://lin.ee/ngaHmLM";
 const DEFAULT_CARD_CHAT_ALT_TEXT = "健康新世代、從康立開始";
-const AI_WEAR_LIFF_URL = "https://liff.line.me/2007221311-ISFxRBY3?aiWearTry=1";
+const AI_WEAR_LIFF_URL = "https://liff.line.me/2007221311-snSAlddv?aiWearTry=1";
 const cardChatAltText = (card) => String(card?.chatAltText || DEFAULT_CARD_CHAT_ALT_TEXT).trim().slice(0, 300) || DEFAULT_CARD_CHAT_ALT_TEXT;
 const api = async (path, options = {}) => {
   const r = await fetch(path, {
