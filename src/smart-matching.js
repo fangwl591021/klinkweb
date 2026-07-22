@@ -70,20 +70,22 @@ export function resolveMatchingResults(contacts = [], parsed = {}) {
   }).slice(0, 3);
 }
 
-export async function matchContacts({ contacts = [], member = {}, query = '', apiKey = '', model = '' } = {}) {
+export async function matchContacts({ contacts = [], member = {}, query = '', numberScienceContext = '', apiKey = '', model = '' } = {}) {
   const request = text(query, 300);
   if (request.length < 2) throw new Error('請輸入至少 2 個字的配對需求');
   if (!apiKey) throw new Error('MLM AI 服務尚未連線');
   if (!contacts.length) throw new Error('名片收藏尚無資料，請先拍照或上傳名片');
 
   const candidates = buildMatchingCandidates(contacts);
+  const numberScience = text(numberScienceContext, 6000);
+  const numberScienceBlock = numberScience ? `\n已購数字科学背景（僅作尋求者的溝通、節奏與合作偏好參考）：\n${numberScience}\n` : "";
   const result = await callAiResponses(apiKey, {
       model: model || 'gpt-5.6-terra',
       reasoning: { effort: 'low' },
       max_output_tokens: 900,
       input: [{
         role: 'user',
-        content: `你是繁體中文商務人脈配對顧問。請依照 LINE- 智能配對方式，從候選名片中找出最符合需求的 0 至 3 人。\n\n尋求者：${text(member.displayName, 120) || '康立會員'}\n配對需求：${request}\n候選名片：${JSON.stringify(candidates)}\n\n規則：\n1. 只能選候選清單內的人，index 必須完全對應候選 index。\n2. 綜合公司、職稱、服務內容與五大標籤判斷互補性。\n3. score 為 0 至 100 的整數；reason 以 15 至 40 個繁體中文字說明具體合作理由。\n4. 資料不足時保守評分，不得捏造經歷、客戶、證照、財力或健康狀況。\n5. 若沒有合理人選，回傳空陣列。只回傳指定 JSON。`,
+        content: `你是繁體中文商務人脈配對顧問。請依照 LINE- 智能配對方式，從候選名片中找出最符合需求的 0 至 3 人。\n\n尋求者：${text(member.displayName, 120) || '康立會員'}\n配對需求：${request}${numberScienceBlock}\n候選名片：${JSON.stringify(candidates)}\n\n規則：\n1. 只能選候選清單內的人，index 必須完全對應候選 index。\n2. 主要依公司、職稱、服務內容與五大標籤判斷，再以数字科学背景輔助理解尋求者的溝通、工作節奏與互補偏好。\n3. 候選人沒有生日或数字科学資料時，不得聲稱雙方具有特定數字、命盤或命定相容性。\n4. 不得依健康、疾病、財務、宗教或其他敏感內容評分；数字科学只能作低權重生活參考。\n5. score 為 0 至 100 的整數；reason 以 15 至 40 個繁體中文字說明具體合作理由。\n6. 資料不足時保守評分，不得捏造經歷、客戶、證照、財力或健康狀況。\n7. 若沒有合理人選，回傳空陣列。只回傳指定 JSON。`,
       }],
       text: { format: { type: 'json_schema', name: 'smart_contact_matches', strict: true, schema: MATCH_SCHEMA } },
   });

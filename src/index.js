@@ -277,6 +277,58 @@ async function proxyNumberScienceRequest(env, member, body = {}) {
   }
 }
 
+function matchingContextText(value, max = 1200) {
+  return String(value || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+async function loadNumberScienceMatchingContext(env, member) {
+  if (!env.MLM_WORKER || typeof env.MLM_WORKER.fetch !== 'function') return { text: '', labels: [] };
+  const lineUserId = await currentMemberLineSubject(env.DB, member.userId);
+  if (!lineUserId) return { text: '', labels: [] };
+  const call = async (payload) => {
+    const response = await env.MLM_WORKER.fetch('https://mlm.internal/api/internal/number-science/reports', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({ ...payload, lineUserId }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.status !== 'success') throw new Error(result.message || '数字科学資料讀取失敗');
+    return result;
+  };
+
+  try {
+    const listing = await call({ action: 'list' });
+    const reports = Array.isArray(listing.reports) ? listing.reports : [];
+    // 智能配對只使用尋求者自己的完整與流日背景。配對、職場、愛情報告
+    // 含有特定第三人資料，不應拿來評估其他收藏名片。
+    const selected = [1, 2].flatMap((requestType) => {
+      const item = reports.find((report) => Number(report.requestType) === requestType);
+      return item ? [item] : [];
+    });
+    if (!selected.length) return { text: '', labels: [] };
+    const details = await Promise.all(selected.map((item) => call({ action: 'get', id: item.id })));
+    const labels = [];
+    const blocks = [];
+    for (const detail of details) {
+      const item = detail.item || {};
+      const sections = Array.isArray(item.report?.sections) ? item.report.sections : [];
+      const safeSections = sections
+        .filter((section) => !/(健康|疾病|病症|醫療|財務|財運|宗教)/.test(String(section?.title || '')))
+        .slice(0, 10)
+        .map((section) => `${matchingContextText(section.title, 100)}：${matchingContextText(section.content, 420)}`)
+        .filter((value) => value.length > 2);
+      if (!safeSections.length) continue;
+      const label = matchingContextText(item.productLabel, 60) || '数字科学報告';
+      labels.push(label);
+      blocks.push(`${label}\n${safeSections.join('\n')}`);
+    }
+    return { text: blocks.join('\n\n').slice(0, 6000), labels };
+  } catch (error) {
+    console.warn('Number science matching context unavailable', error);
+    return { text: '', labels: [] };
+  }
+}
+
 async function currentAdmin(request, env) {
   const member = await currentMember(request, env);
   if (!member) return null;
@@ -591,8 +643,21 @@ async function app(request, env, ctx) {
       const body = (await readJson(request)) || {};
       const contacts = await listContacts(env.DB, member.userId, "");
       const aiProvider = await resolveCardAiProvider(env);
-      const matches = await matchContacts({ contacts, member, query: body.query, apiKey: aiProvider, model: env.OPENAI_CARD_MODEL });
-      return json({ success: true, matches });
+      const numberScience = await loadNumberScienceMatchingContext(env, member);
+      const matches = await matchContacts({
+        contacts,
+        member,
+        query: body.query,
+        numberScienceContext: numberScience.text,
+        apiKey: aiProvider,
+        model: env.OPENAI_CARD_MODEL,
+      });
+      return json({
+        success: true,
+        matches,
+        numberScienceUsed: Boolean(numberScience.text),
+        numberScienceReports: numberScience.labels,
+      });
     } catch (error) {
       return badRequest(error.message || "智能配對失敗");
     }
