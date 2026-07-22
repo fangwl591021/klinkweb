@@ -82,6 +82,10 @@ const state = {
   daily: null,
   dailyPanel: "checkin",
   dailyCampaignId: new URLSearchParams(location.search).get("checkin") || "",
+  calendarSessions: null,
+  calendarRegisteredIds: new Set(),
+  calendarMonth: "",
+  calendarSelectedDate: "",
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
@@ -199,7 +203,7 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], smartMatch:["智能配對","輸入合作需求，從你的名片收藏中找出適合的人選。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
+  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], smartMatch:["智能配對","輸入合作需求，從你的名片收藏中找出適合的人選。"], calendar:["個人行事曆","同步顯示 MLM 活動與你的報名狀態。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
   const [featureTitle,featureHint] = featureCopy[state.tab] || ["康立行動入口","會員服務與活動入口。"];
   const headerAction = state.tab === "card" ? `<button class="feature-header-action" data-home-action="cardCollection">名片收藏</button>` : state.tab === "cardCollection" ? `<button class="feature-header-action" data-home-action="card">我的名片</button>` : "";
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div>${headerAction}</header>`;
@@ -355,6 +359,7 @@ async function render() {
   if (state.tab === "zodiac") return zodiac();
   if (state.tab === "cardCollection") return cardCollection();
   if (state.tab === "smartMatch") return smartMatch();
+  if (state.tab === "calendar") return personalCalendar();
   if (state.tab === "profile") return profile();
   return home();
 }
@@ -384,6 +389,7 @@ const portalIcon = (name) => ({
   aiWear: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 10.2h3.1l1.1 4.1h3.2l1.1-4.1 1.1 4.1h3.2l1.1-4.1h3.1"/><path d="M6.6 10.2c.5-1.1 1.4-1.7 2.6-1.7s2.1.6 2.8 1.7c.7-1.1 1.6-1.7 2.8-1.7s2.1.6 2.6 1.7"/><path d="m18.5 3.5.5 1.4 1.5.1-1.2.9.4 1.5-1.2-.9-1.3.9.5-1.5-1.2-.9 1.5-.1z"/></svg>`,
   profile: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.3" y="4.3" width="15.4" height="15.4" rx="3.2"/><circle cx="12" cy="12" r="3.2"/><path d="M8 7.1h.01M16 7.1h.01"/></svg>`,
   home: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4.5 11 7.5-6.2 7.5 6.2v8.3H4.5z"/><path d="M9 19.3v-4.4h6v4.4M12 7.2v3.1M10.45 8.75h3.1"/></svg>`,
+  calendar: `<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 10h18"/><path d="M7 14h2M11 14h2M15 14h2M7 18h2M11 18h2"/></svg>`,
   zodiac: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.8 1.1 3.2 3.3.1-2.6 2 1 3.2-2.8-1.9-2.8 1.9 1-3.2-2.6-2 3.3-.1z"/><path d="M18.4 14.4a3.8 3.8 0 1 1-4.8 4.8 4.6 4.6 0 0 0 4.8-4.8Z"/></svg>`
 }[name] || "");
 const zodiacRanges = [
@@ -565,7 +571,90 @@ async function zodiac() {
   layout(`<section class="zodiac-fortune-card zodiac-comprehensive"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>今日整體</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-score-grid"><div><span>事業</span><b>${fortune.career}</b></div><div><span>人際</span><b>${fortune.relation}</b></div><div><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div></div><div class="zodiac-insight-grid"><article><small>基本性格</small><h3>${esc(fortune.zodiac.name)}</h3><p>${esc(traits)}</p><p class="muted">${esc(zodiacTip)}</p></article><article><small>生肖特質</small><h3>生肖 ${esc(fortune.chinese.name)}</h3><p>${esc(fortune.chinese.trait)}</p><p class="muted">把你的優勢用在最值得經營的關係與目標上。</p></article><article><small>生命靈數</small><h3>${fortune.life.number}｜${esc(fortune.life.title)}</h3><p>${esc(fortune.life.advice)}</p></article></div><div class="zodiac-action"><small>今日行動建議</small><b>選一件最想推進的事情，安排一個能在今天完成的小步驟。</b></div><p class="muted small zodiac-note">內容為個人化生活建議與娛樂參考；每日內容會依日期更新。</p></section>${numberSciencePanel(reportHistory)}`);
   bindNumberScience();
 }
-const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="cardCollection"><i class="portal-menu-icon navy">${portalIcon("cardCollection")}</i><span>名片收藏</span></button><button data-home-action="smartMatch"><i class="portal-menu-icon coral">${portalIcon("smartMatch")}</i><span>智能配對</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
+function calendarDateKey(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Taipei", year:"numeric", month:"2-digit", day:"2-digit" }).format(date);
+}
+function calendarMonthKey(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Taipei", year:"numeric", month:"2-digit" }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value || "";
+  const month = parts.find((part) => part.type === "month")?.value || "";
+  return year && month ? `${year}-${month}` : "";
+}
+function calendarTimeText(session) {
+  const start = new Date(session.startsAt);
+  const end = new Date(session.endsAt);
+  if (!Number.isFinite(start.getTime())) return "時間未設定";
+  const formatter = new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", hour:"2-digit", minute:"2-digit", hour12:false });
+  return Number.isFinite(end.getTime()) ? `${formatter.format(start)}–${formatter.format(end)}` : formatter.format(start);
+}
+function renderPersonalCalendarView() {
+  const sessions = Array.isArray(state.calendarSessions) ? state.calendarSessions : [];
+  const monthKey = state.calendarMonth || calendarMonthKey();
+  const [year, month] = monthKey.split("-").map(Number);
+  const first = new Date(year, month - 1, 1);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const leading = first.getDay();
+  const monthSessions = sessions.filter((session) => calendarDateKey(session.startsAt).startsWith(monthKey));
+  const eventMap = new Map();
+  monthSessions.forEach((session) => {
+    const key = calendarDateKey(session.startsAt);
+    if (!eventMap.has(key)) eventMap.set(key, []);
+    eventMap.get(key).push(session);
+  });
+  const todayKey = calendarDateKey(new Date());
+  if (!state.calendarSelectedDate || !state.calendarSelectedDate.startsWith(monthKey)) state.calendarSelectedDate = todayKey.startsWith(monthKey) ? todayKey : `${monthKey}-01`;
+  const cells = [];
+  for (let i = 0; i < leading; i += 1) cells.push(`<span class="personal-calendar-empty"></span>`);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const key = `${monthKey}-${String(day).padStart(2, "0")}`;
+    const count = (eventMap.get(key) || []).length;
+    cells.push(`<button class="personal-calendar-day${key === todayKey ? " today" : ""}${key === state.calendarSelectedDate ? " selected" : ""}" data-calendar-date="${key}"><span>${day}</span>${count ? `<b>${count}</b><i></i>` : ""}</button>`);
+  }
+  const selectedEvents = (eventMap.get(state.calendarSelectedDate) || []).sort((a,b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
+  const selectedLabel = new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", month:"long", day:"numeric", weekday:"short" }).format(new Date(`${state.calendarSelectedDate}T12:00:00+08:00`));
+  const eventHtml = selectedEvents.length ? selectedEvents.map((session) => {
+    const registered = state.calendarRegisteredIds.has(String(session.sessionId || ""));
+    const place = session.mode === "online" ? "線上活動" : (session.venueName || session.venueAddress || "地點未定");
+    return `<article class="personal-calendar-event"><div class="personal-calendar-event-time"><b>${esc(calendarTimeText(session))}</b><span>${session.mode === "online" ? "線上" : "實體"}</span></div><div class="personal-calendar-event-copy"><div><small>MLM 行事曆${registered ? "・已報名" : ""}</small><h3>${esc(session.title || session.courseTitle || "未命名活動")}</h3></div><p>${esc(place)}</p>${session.courseDescription ? `<p class="muted">${esc(session.courseDescription)}</p>` : ""}</div></article>`;
+  }).join("") : `<div class="personal-calendar-no-event">這一天沒有 MLM 活動。</div>`;
+  layout(`<section class="personal-calendar-card"><header class="personal-calendar-toolbar"><button id="calendarPrev" type="button" aria-label="上個月">‹</button><div><small>MLM SYNC</small><h2>${year} 年 ${month} 月</h2></div><button id="calendarNext" type="button" aria-label="下個月">›</button></header><div class="personal-calendar-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="personal-calendar-grid">${cells.join("")}</div><div class="personal-calendar-sync-note"><span>●</span> 已同步 MLM 內部行事曆，共 ${monthSessions.length} 項活動</div></section><section class="personal-calendar-agenda"><header><div><small>當日行程</small><h2>${esc(selectedLabel)}</h2></div><button id="calendarToday" type="button">今天</button></header>${eventHtml}</section>`);
+  document.querySelectorAll("[data-calendar-date]").forEach((button) => {
+    button.onclick = () => { state.calendarSelectedDate = button.dataset.calendarDate || ""; renderPersonalCalendarView(); };
+  });
+  $("#calendarPrev").onclick = () => {
+    const next = new Date(year, month - 2, 1);
+    state.calendarMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;
+    state.calendarSelectedDate = "";
+    renderPersonalCalendarView();
+  };
+  $("#calendarNext").onclick = () => {
+    const next = new Date(year, month, 1);
+    state.calendarMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;
+    state.calendarSelectedDate = "";
+    renderPersonalCalendarView();
+  };
+  $("#calendarToday").onclick = () => { state.calendarMonth = calendarMonthKey(); state.calendarSelectedDate = calendarDateKey(new Date()); renderPersonalCalendarView(); };
+}
+async function personalCalendar() {
+  state.tab = "calendar";
+  layout(`<section class="card personal-calendar-loading"><h2>同步 MLM 行事曆中…</h2><p class="muted">正在整理活動日期與你的報名狀態。</p></section>`);
+  try {
+    const [all, mine] = await Promise.all([api("/v1/courses"), api("/v1/courses/my")]);
+    state.calendarSessions = Array.isArray(all.sessions) ? all.sessions : [];
+    state.calendarRegisteredIds = new Set((mine.sessions || []).map((session) => String(session.sessionId || "")));
+    state.calendarMonth = state.calendarMonth || calendarMonthKey();
+    state.calendarSelectedDate = state.calendarSelectedDate || calendarDateKey(new Date());
+    renderPersonalCalendarView();
+  } catch (error) {
+    layout(`<section class="card personal-calendar-loading"><h2>行事曆同步失敗</h2><p class="muted">${esc(error.message || "暫時無法讀取 MLM 行事曆")}</p><button class="btn" id="retryPersonalCalendar">重新同步</button></section>`);
+    $("#retryPersonalCalendar").onclick = personalCalendar;
+  }
+}
+
+const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="cardCollection"><i class="portal-menu-icon navy">${portalIcon("cardCollection")}</i><span>名片收藏</span></button><button data-home-action="smartMatch"><i class="portal-menu-icon coral">${portalIcon("smartMatch")}</i><span>智能配對</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="calendar"><i class="portal-menu-icon blue">${portalIcon("calendar")}</i><span>個人行事曆</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function openAiWear(){try{if(window.liff?.isInClient?.()){window.liff.openWindow({url:AI_WEAR_LIFF_URL,external:false});return}}catch{/* Fall back to direct LIFF navigation. */}window.location.href=AI_WEAR_LIFF_URL}
 function openOfficialSite(page="home"){
   document.querySelector("#officialSiteOverlay")?.remove();
@@ -583,7 +672,7 @@ function bindOfficialSiteLinks(){
   const links=[[document.querySelector(".klink-home-hero>a"),"home"],[document.querySelector(".klink-official-banner"),"home"],...Array.from(document.querySelectorAll(".klink-home-grid>a")).map((link,index)=>[link,["about","news","products","video"][index]])];
   links.forEach(([link,page])=>link?.addEventListener("click",(event)=>{event.preventDefault();openOfficialSite(page)}));
 }
-function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":action==="smartMatch"?"smartMatch":"wallet";await render()}));bindOfficialSiteLinks();$("#copyInvite")?.addEventListener("click",copyInvite)}
+function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":action==="smartMatch"?"smartMatch":action==="calendar"?"calendar":"wallet";await render()}));bindOfficialSiteLinks();$("#copyInvite")?.addEventListener("click",copyInvite)}
 async function mlmMemberPointBalance(fallbackBalance=0){
   try{
     mlmPointSyncError="";
