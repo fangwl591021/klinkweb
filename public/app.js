@@ -1543,6 +1543,10 @@ function crmInsightSection(card) {
   return `<section class="crm-insights"><div class="crm-insights-heading"><h3>✧ 五大標籤</h3><span>依名片公開文字分析，供 CRM 溝通與跟進參考</span></div><div class="crm-insights-grid">${cards}</div></section>`;
 }
 
+function smartMatchHistorySection(history=[]) {
+  return `<section class="contact-match-history"><div class="contact-match-history-heading"><div><small>智能配對</small><h3>配對紀錄</h3></div><span>${history.length} 筆</span></div>${history.length?`<div class="contact-match-history-list">${history.map((item)=>`<article><div class="contact-match-history-score"><strong>${format(item.score)}</strong><small>%</small></div><div><h4>${esc(item.query||"智能配對需求")}</h4><p>${esc(item.reason||"")}</p><footer><span>推薦第 ${Number(item.rank)||1} 名</span>${item.numberScienceUsed?`<span>已納入数字科学</span>`:""}<time>${new Date(item.createdAt).toLocaleString("zh-TW",{year:"numeric",month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</time></footer></div></article>`).join("")}</div>`:`<p class="muted">這張名片尚無智能配對紀錄。完成配對後，需求、分數與推薦理由會保留在這裡。</p>`}</section>`;
+}
+
 async function showContactEditor(card) {
   const requestedView = state.collectionCardView || "contact";
   const view = ["contact", "edit", "insights"].includes(requestedView) ? requestedView : "contact";
@@ -1557,7 +1561,10 @@ async function showContactEditor(card) {
   if (view === "insights") {
     const viewed = cardWithVersion(card, selected.id);
     const photoUrl = card.hasImage ? await authorizedImageUrl(card) : viewed.coverUrl;
-    panel = `${photoUrl ? `<section class="crm-insight-reference"><img class="crm-insight-reference-image" src="${esc(photoUrl)}" alt="${esc(card.displayName || "名片")}"></section>` : ""}${crmInsightSection(card)}`;
+    let matchingHistory = [];
+    try { matchingHistory = (await api(`/v1/card-collection/${encodeURIComponent(card.id)}/matching-history`)).history || []; }
+    catch (error) { console.warn("Smart matching history unavailable", error); }
+    panel = `${photoUrl ? `<section class="crm-insight-reference"><img class="crm-insight-reference-image" src="${esc(photoUrl)}" alt="${esc(card.displayName || "名片")}"></section>` : ""}${crmInsightSection(card)}${smartMatchHistorySection(matchingHistory)}`;
   }
   layout(`<section class="business-card collection-editor"><div class="business-card-title"><button class="back-card" id="backCollection" aria-label="返回">←</button><h2>名片詳細資料</h2></div>${tabs}${panel}</section>`);
   $("#backCollection").onclick=()=>{ state.collectionCardView=""; state.collectionCardVersion=""; cardCollection(); };
@@ -1624,7 +1631,7 @@ async function smartMatch() {
       const result = await withActionFeedback(button, () => api("/v1/card-collection/match", { method:"POST", body:JSON.stringify({ query }) }), { busy:"AI 配對中…", success:"配對完成" });
       const matches = result.matches || [];
       $("#smartMatchResults").innerHTML = matches.length
-        ? `<div class="smart-match-results-head"><h2>推薦人選</h2><span>${matches.length} 位${result.numberScienceUsed?"・已納入数字科学":""}</span></div>${matches.map(({card,score,reason},index)=>`<button class="card smart-match-result" data-match-card-id="${esc(card.id)}"><span class="smart-match-rank">${index+1}</span><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc((card.displayName||"名").slice(0,1))}</span><span class="smart-match-person"><strong>${esc(card.displayName||"未命名")}</strong><small>${esc([card.companyName,card.jobTitle].filter(Boolean).join("／")||"收藏名片")}</small><p>${esc(reason)}</p></span><b class="smart-match-score">${format(score)}<small>%</small></b></button>`).join("")}`
+        ? `<div class="smart-match-results-head"><h2>推薦人選</h2><span>${matches.length} 位${result.cached?"・已載入上次結果":""}${result.numberScienceUsed?"・已納入数字科学":""}</span></div>${matches.map(({card,score,reason},index)=>`<button class="card smart-match-result" data-match-card-id="${esc(card.id)}"><span class="smart-match-rank">${index+1}</span><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc((card.displayName||"名").slice(0,1))}</span><span class="smart-match-person"><strong>${esc(card.displayName||"未命名")}</strong><small>${esc([card.companyName,card.jobTitle].filter(Boolean).join("／")||"收藏名片")}</small><p>${esc(reason)}</p></span><b class="smart-match-score">${format(score)}<small>%</small></b></button>`).join("")}`
         : `<div class="card collection-empty">目前沒有足夠符合需求的人選，換一個更具體的需求再試試看。</div>`;
       document.querySelectorAll("[data-match-card-id]").forEach((row) => row.onclick = () => showContactEditor(collectionCards.find((card) => card.id === row.dataset.matchCardId)));
       attachCollectionImages();
