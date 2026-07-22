@@ -479,11 +479,79 @@ function showBirthdayRequiredDialog() {
   dialog.querySelector("[data-zodiac-prompt-close]").onclick = () => dialog.remove();
   dialog.querySelector("[data-zodiac-prompt-fill]").onclick = async () => { dialog.remove(); state.tab = "profile"; await render(); setTimeout(() => $("#birthday")?.focus(), 0); };
 }
+const numberScienceProducts = [
+  { type:1, key:"complete", title:"完整報告", description:"個人核心數字、特質與完整解析", cost:50, person:false },
+  { type:2, key:"daily", title:"流日", description:"依今日日期查看當日數字指引", cost:10, person:false },
+  { type:4, key:"matching", title:"配對", description:"輸入對方生日，查看彼此互動磁場", cost:10, person:true },
+  { type:5, key:"workplace", title:"職場", description:"分析你與工作夥伴的合作關係", cost:10, person:true },
+  { type:6, key:"love", title:"愛情", description:"分析兩人的情感互動與相處方向", cost:10, person:true },
+];
+
+function numberScienceReportDialog(item, cached=false) {
+  document.querySelector(".number-science-report-dialog")?.remove();
+  const report=item?.report||{};
+  const sections=Array.isArray(report.sections)?report.sections:[];
+  const dialog=document.createElement("div");
+  dialog.className="number-science-report-dialog";
+  dialog.innerHTML=`<section class="number-science-report-sheet"><header><div><small>${cached?"已購報告・不重複扣點":"報告完成"}</small><h2>${esc(report.title||item?.productLabel||"数字科学報告")}</h2></div><button type="button" aria-label="關閉">×</button></header><div class="number-science-report-meta"><span>${esc(item?.productLabel||"")}</span><b>${Number(item?.pointCost||0)} K點</b>${item?.personName?`<span>對象：${esc(item.personName)}</span>`:""}</div><div class="number-science-sections">${sections.map((section,index)=>`<details ${index===0?"open":""}><summary>${esc(section.title||`第 ${index+1} 章`)}</summary><div>${esc(section.content||"")}</div></details>`).join("")||"<p class=\"muted\">報告內容暫時無法顯示。</p>"}</div><p class="number-science-disclaimer">本內容為數字科學之生活與關係參考，不構成醫療、投資、法律或其他專業建議。</p></section>`;
+  document.body.appendChild(dialog);
+  const close=()=>dialog.remove();
+  dialog.querySelector("header button").onclick=close;
+  dialog.addEventListener("click",event=>{if(event.target===dialog)close()});
+}
+
+async function openNumberScienceHistory(id, button) {
+  await withActionFeedback(button,async()=>{
+    const result=await api("/v1/number-science/reports",{method:"POST",body:JSON.stringify({action:"get",id})});
+    numberScienceReportDialog(result.item,true);
+  },{busy:"讀取中…",success:"已開啟"}).catch(error=>alert(error.message));
+}
+
+function openNumberSciencePurchase(requestType) {
+  const product=numberScienceProducts.find(item=>item.type===Number(requestType));
+  if(!product)return;
+  document.querySelector(".number-science-purchase-dialog")?.remove();
+  const memberGender=state.member?.gender==="male"?"0":state.member?.gender==="female"?"1":"";
+  const dialog=document.createElement("div");
+  dialog.className="number-science-purchase-dialog";
+  dialog.innerHTML=`<form class="number-science-purchase-sheet"><header><div><small>数字科学</small><h2>${esc(product.title)}・${product.cost} K點</h2></div><button type="button" data-close aria-label="關閉">×</button></header><p>將使用你註冊的生日 <b>${esc(state.member?.birthday||"")}</b> 產生報告。</p><label>本次報告用性別<select name="selfGender" required><option value="">請選擇</option><option value="0" ${memberGender==="0"?"selected":""}>男</option><option value="1" ${memberGender==="1"?"selected":""}>女</option></select></label>${product.person?`<div class="number-science-person"><h3>對方資料</h3><label>姓名<input name="personName" maxlength="80" required autocomplete="name"></label><label>生日<input name="personBirthday" type="date" required></label><label>性別<select name="personGender" required><option value="">請選擇</option><option value="0">男</option><option value="1">女</option></select></label></div>`:""}<label class="number-science-consent"><input name="consent" type="checkbox" required><span>我同意為產生本次報告，將上述姓名、生日與性別傳送至数字科学服務。報告成功後扣除 ${product.cost} K點；失敗不扣點。</span></label><button class="btn" type="submit">確認產生並扣 ${product.cost} K點</button><p class="muted small">相同已購報告再次查看不會重複扣點；流日報告每日視為新報告。</p></form>`;
+  document.body.appendChild(dialog);
+  const close=()=>dialog.remove();
+  dialog.querySelector("[data-close]").onclick=close;
+  dialog.addEventListener("click",event=>{if(event.target===dialog)close()});
+  dialog.querySelector("form").onsubmit=async event=>{
+    event.preventDefault();
+    const form=event.currentTarget, submit=form.querySelector("button[type=submit]");
+    const data=new FormData(form);
+    const payload={action:"generate",requestType:product.type,selfGender:data.get("selfGender"),consent:data.get("consent")==="on"};
+    if(product.person)payload.person={name:data.get("personName"),birthDate:data.get("personBirthday"),gender:data.get("personGender")};
+    await withActionFeedback(submit,async()=>{
+      const result=await api("/v1/number-science/reports",{method:"POST",body:JSON.stringify(payload)});
+      close();
+      numberScienceReportDialog(result.item,Boolean(result.cached));
+      const wallet=document.querySelector(".portal-wallet strong");
+      if(wallet&&Number.isFinite(Number(result.balance)))wallet.textContent=format(result.balance);
+    },{busy:"報告產生中，請勿關閉…",success:"報告完成"}).catch(error=>alert(error.message));
+  };
+}
+
+function numberSciencePanel(history=[]) {
+  return `<section class="number-science-card"><div class="number-science-heading"><div><small>生日 × 康立智能 K點</small><h2>数字科学</h2><p>完成註冊後，以會員生日產生個人化報告；只有成功取得報告才扣點。</p></div><span>報告服務</span></div><div class="number-science-products">${numberScienceProducts.map(product=>`<button type="button" data-number-science-product="${product.type}"><i>${product.type===1?"完整":"10點"}</i><strong>${esc(product.title)}</strong><small>${esc(product.description)}</small><b>${product.cost} K點</b></button>`).join("")}</div>${history.length?`<div class="number-science-history"><h3>已購報告</h3>${history.map(item=>`<button type="button" data-number-science-history="${esc(item.id)}"><span><b>${esc(item.productLabel)}</b><small>${item.personName?`對象：${esc(item.personName)}・`:""}${new Date(Number(item.createdAt)||Date.now()).toLocaleDateString("zh-TW")}</small></span><i>查看</i></button>`).join("")}</div>`:""}<p class="number-science-disclaimer">完整報告 50 點；流日、配對、職場、愛情各 10 點。報告屬生活參考。</p></section>`;
+}
+
+function bindNumberScience() {
+  document.querySelectorAll("[data-number-science-product]").forEach(button=>button.onclick=()=>openNumberSciencePurchase(button.dataset.numberScienceProduct));
+  document.querySelectorAll("[data-number-science-history]").forEach(button=>button.onclick=()=>openNumberScienceHistory(button.dataset.numberScienceHistory,button));
+}
+
 async function zodiac() {
   const fortune = buildPersonalFortune(state.member?.birthday);
   if (!fortune) return showBirthdayRequiredDialog();
   const [traits, zodiacTip] = zodiacProfiles[fortune.zodiac.name] || ["獨特、真誠、持續成長","保持自己的步調。"];
-  layout(`<section class="zodiac-fortune-card zodiac-comprehensive"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>今日整體</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-score-grid"><div><span>事業</span><b>${fortune.career}</b></div><div><span>人際</span><b>${fortune.relation}</b></div><div><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div></div><div class="zodiac-insight-grid"><article><small>基本性格</small><h3>${esc(fortune.zodiac.name)}</h3><p>${esc(traits)}</p><p class="muted">${esc(zodiacTip)}</p></article><article><small>生肖特質</small><h3>生肖 ${esc(fortune.chinese.name)}</h3><p>${esc(fortune.chinese.trait)}</p><p class="muted">把你的優勢用在最值得經營的關係與目標上。</p></article><article><small>生命靈數</small><h3>${fortune.life.number}｜${esc(fortune.life.title)}</h3><p>${esc(fortune.life.advice)}</p></article></div><div class="zodiac-action"><small>今日行動建議</small><b>選一件最想推進的事情，安排一個能在今天完成的小步驟。</b></div><p class="muted small zodiac-note">內容為個人化生活建議與娛樂參考；每日內容會依日期更新。</p></section>`);
+  let reportHistory=[];
+  try { reportHistory=(await api("/v1/number-science/reports")).reports||[]; } catch (error) { console.warn("Number science history unavailable",error); }
+  layout(`<section class="zodiac-fortune-card zodiac-comprehensive"><div class="zodiac-fortune-symbol">${fortune.zodiac.symbol}</div><div class="zodiac-fortune-date">${esc(fortune.date)}・${esc(fortune.zodiac.name)}</div><h2>今日運勢｜${esc(fortune.theme)}</h2><div class="zodiac-score"><span>今日整體</span><strong>${fortune.score}</strong><i><b style="width:${fortune.score}%"></b></i></div><p class="zodiac-fortune-advice">${esc(fortune.advice)}</p><div class="zodiac-score-grid"><div><span>事業</span><b>${fortune.career}</b></div><div><span>人際</span><b>${fortune.relation}</b></div><div><span>幸運色</span><b>${esc(fortune.luckyColor)}</b></div></div><div class="zodiac-insight-grid"><article><small>基本性格</small><h3>${esc(fortune.zodiac.name)}</h3><p>${esc(traits)}</p><p class="muted">${esc(zodiacTip)}</p></article><article><small>生肖特質</small><h3>生肖 ${esc(fortune.chinese.name)}</h3><p>${esc(fortune.chinese.trait)}</p><p class="muted">把你的優勢用在最值得經營的關係與目標上。</p></article><article><small>生命靈數</small><h3>${fortune.life.number}｜${esc(fortune.life.title)}</h3><p>${esc(fortune.life.advice)}</p></article></div><div class="zodiac-action"><small>今日行動建議</small><b>選一件最想推進的事情，安排一個能在今天完成的小步驟。</b></div><p class="muted small zodiac-note">內容為個人化生活建議與娛樂參考；每日內容會依日期更新。</p></section>${numberSciencePanel(reportHistory)}`);
+  bindNumberScience();
 }
 const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="cardCollection"><i class="portal-menu-icon navy">${portalIcon("cardCollection")}</i><span>名片收藏</span></button><button data-home-action="smartMatch"><i class="portal-menu-icon coral">${portalIcon("smartMatch")}</i><span>智能配對</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function openAiWear(){try{if(window.liff?.isInClient?.()){window.liff.openWindow({url:AI_WEAR_LIFF_URL,external:false});return}}catch{/* Fall back to direct LIFF navigation. */}window.location.href=AI_WEAR_LIFF_URL}
