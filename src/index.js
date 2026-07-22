@@ -161,11 +161,16 @@ function officialTallLiffHtml(env, requestUrl) {
 </script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
+async function resolveCardAiProvider(env) {
+  if (env.MLM_WORKER && typeof env.MLM_WORKER.fetch === "function") return env.MLM_WORKER;
+  return resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
+}
+
 function scheduleContactCrmInsights(env, ctx, userId, id) {
   const task=(async()=>{
-    const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
-    if(!openAIKey)throw new Error('AI 五大標籤尚未設定 API 金鑰');
-    await processContactInsightsInBackground(env.DB,userId,id,openAIKey,env.OPENAI_CARD_MODEL);
+    const aiProvider=await resolveCardAiProvider(env);
+    if(!aiProvider)throw new Error('MLM AI 服務尚未連線');
+    await processContactInsightsInBackground(env.DB,userId,id,aiProvider,env.OPENAI_CARD_MODEL);
   })();
   if(ctx?.waitUntil)ctx.waitUntil(task);
   else task.catch((error)=>console.error('Automatic CRM insight analysis failed',error));
@@ -514,8 +519,8 @@ async function app(request, env, ctx) {
     try {
       const body = (await readJson(request)) || {};
       const contacts = await listContacts(env.DB, member.userId, "");
-      const openAIKey = await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
-      const matches = await matchContacts({ contacts, member, query: body.query, apiKey: openAIKey, model: env.OPENAI_CARD_MODEL });
+      const aiProvider = await resolveCardAiProvider(env);
+      const matches = await matchContacts({ contacts, member, query: body.query, apiKey: aiProvider, model: env.OPENAI_CARD_MODEL });
       return json({ success: true, matches });
     } catch (error) {
       return badRequest(error.message || "智能配對失敗");
@@ -536,9 +541,9 @@ async function app(request, env, ctx) {
     if (!member) return json({ success:false, error:"Unauthorized" }, 401);
     try {
       const eventId=decodeURIComponent(submitBackgroundImport[1]);
-      const openAIKey=await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
-      const result=await submitImportInBackground(env.DB, env.MEDIA, member.userId, eventId, openAIKey, env.OPENAI_CARD_MODEL);
-      const task=processImportInBackground(env.DB, env.MEDIA, member.userId, eventId, openAIKey, env.OPENAI_CARD_MODEL);
+      const aiProvider=await resolveCardAiProvider(env);
+      const result=await submitImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
+      const task=processImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
       if (ctx?.waitUntil) ctx.waitUntil(task); else task.catch((error)=>console.error("Background card analysis failed",error));
       return json({success:true,...result,analysis:"queued"},202);
     } catch(error) { return badRequest(error.message || "名片送出失敗"); }
@@ -549,8 +554,8 @@ async function app(request, env, ctx) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try {
-      const openAIKey = await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
-      const result = await recognizeImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(recognizeCardImport[1]), openAIKey, env.OPENAI_CARD_MODEL);
+      const aiProvider = await resolveCardAiProvider(env);
+      const result = await recognizeImport(env.DB, env.MEDIA, member.userId, decodeURIComponent(recognizeCardImport[1]), aiProvider, env.OPENAI_CARD_MODEL);
       return json({ success: true, ...result });
     } catch (error) { return badRequest(error.message || "名片辨識失敗"); }
   }
@@ -574,8 +579,8 @@ async function app(request, env, ctx) {
     const member = await currentMember(request, env);
     if (!member) return json({ success:false, error:"Unauthorized" }, 401);
     try {
-      const openAIKey = await resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
-      const result = await expandContactContent(env.DB, member.userId, decodeURIComponent(contactContentExpandMatch[1]), openAIKey, env.OPENAI_CARD_MODEL);
+      const aiProvider = await resolveCardAiProvider(env);
+      const result = await expandContactContent(env.DB, member.userId, decodeURIComponent(contactContentExpandMatch[1]), aiProvider, env.OPENAI_CARD_MODEL);
       return json({ success:true, ...result });
     } catch (error) { return badRequest(error.message || "AI 擴寫失敗"); }
   }
@@ -1617,12 +1622,14 @@ async function app(request, env, ctx) {
 
 async function runSystemCrmInsightBackfill(env) {
   try {
+    const aiProvider=await resolveCardAiProvider(env);
+    if(!aiProvider)return;
+    const importRetries=await queueLegacyFailedImportRetries(env.DB,3);
+    for(const task of importRetries)await processImportInBackground(env.DB,env.MEDIA,task.userId,task.eventId,aiProvider,env.OPENAI_CARD_MODEL);
+    const queued=await queueSystemCrmInsightBackfill(env.DB,6);
+    for(const task of queued.tasks) await processContactInsightsInBackground(env.DB,task.userId,task.id,aiProvider,env.OPENAI_CARD_MODEL);
     const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
     if(!openAIKey)return;
-    const importRetries=await queueLegacyFailedImportRetries(env.DB,3);
-    for(const task of importRetries)await processImportInBackground(env.DB,env.MEDIA,task.userId,task.eventId,openAIKey,env.OPENAI_CARD_MODEL);
-    const queued=await queueSystemCrmInsightBackfill(env.DB,6);
-    for(const task of queued.tasks) await processContactInsightsInBackground(env.DB,task.userId,task.id,openAIKey,env.OPENAI_CARD_MODEL);
     const memberTasks=await queueSystemMemberCrmInsightBackfill(env.DB,6);
     for(const task of memberTasks)await processMemberCrmInsight(env.DB,task.userId,openAIKey,env.OPENAI_CARD_MODEL);
   } catch(error) {
