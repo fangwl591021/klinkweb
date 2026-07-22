@@ -110,7 +110,7 @@ const CRM_INSIGHTS_SCHEMA = { type:'object', additionalProperties:false, require
 
 async function callAiResponses(provider, body) {
   if (!provider) throw new Error('名片 AI 辨識服務尚未連線');
-  const internal = provider && typeof provider.fetch === 'function';
+  const internal = typeof provider !== 'string';
   const response = internal
     ? await provider.fetch('https://mlm.internal/api/internal/ai/responses', {
       method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({request:body}),
@@ -136,7 +136,7 @@ async function recognizeWithOpenAI(apiKey, model, images) {
 // 使用 Responses 的 web_search 工具，只把 OCR／人工校正過的公開欄位送去查找。
 // 回傳候選文案而非直接寫入，最後仍由使用者選取後才保存至數位名片。
 export async function expandContactContent(db, userId, id, apiKey, model) {
-  if (!apiKey) throw new Error('AI 擴寫尚未設定 API 金鑰');
+  if (!apiKey) throw new Error('MLM AI 服務尚未連線');
   const row = await db.prepare("SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active'").bind(id, userId).first();
   if (!row) throw new Error('找不到收藏名片');
   const card = rowToCard(row);
@@ -184,7 +184,7 @@ function withInsightMeta(row, patch) {
   return JSON.stringify(source);
 }
 export async function submitImportInBackground(db, bucket, userId, eventId, apiKey, model) {
-  if(!apiKey)throw new Error('名片 AI 辨識尚未設定 API 金鑰');
+  if(!apiKey)throw new Error('MLM AI 服務尚未連線');
   const event=await db.prepare('SELECT * FROM card_import_events WHERE id=? AND scanner_user_id=?').bind(eventId,userId).first();
   if(!event)throw new Error('找不到這次名片掃描');
   if(event.contact_card_id) {
@@ -301,7 +301,7 @@ export async function createImport(db, bucket, userId, form) {
 }
 
 export async function recognizeImport(db, bucket, userId, eventId, apiKey, model) {
-  if (!apiKey) throw new Error('名片 AI 辨識尚未設定 API 金鑰');
+  if (!apiKey) throw new Error('MLM AI 服務尚未連線');
   const event = await db.prepare('SELECT * FROM card_import_events WHERE id = ? AND scanner_user_id = ?').bind(eventId,userId).first();
   if (!event) throw new Error('找不到這次名片掃描');
   await db.prepare("UPDATE card_import_events SET status='processing', updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(eventId).run();
