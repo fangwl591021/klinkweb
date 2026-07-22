@@ -111,16 +111,24 @@ const CRM_INSIGHTS_SCHEMA = { type:'object', additionalProperties:false, require
 async function callAiResponses(provider, body) {
   if (!provider) throw new Error('名片 AI 辨識服務尚未連線');
   const internal = typeof provider !== 'string';
-  const response = internal
-    ? await provider.fetch('https://mlm.internal/api/internal/ai/responses', {
-      method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({request:body}),
-    })
-    : await fetch('https://api.openai.com/v1/responses', {
-      method:'POST', headers:{authorization:`Bearer ${provider}`,'content-type':'application/json'}, body:JSON.stringify(body),
-    });
-  const result = await response.json().catch(()=>({}));
-  if (!response.ok) throw new Error(result?.error?.message || result?.error || 'MLM AI 服務暫時無法使用');
-  return result;
+  const timeoutMs = body?.text?.format?.name === 'business_card' ? 70000 : 50000;
+  let timer;
+  try {
+    const request = internal
+      ? provider.fetch('https://mlm.internal/api/internal/ai/responses', {
+        method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({request:body}),
+      })
+      : fetch('https://api.openai.com/v1/responses', {
+        method:'POST', headers:{authorization:`Bearer ${provider}`,'content-type':'application/json'}, body:JSON.stringify(body),
+      });
+    const timeout = new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('AI 回應逾時，系統將自動重試')),timeoutMs);});
+    const response = await Promise.race([request,timeout]);
+    const result = await response.json().catch(()=>({}));
+    if (!response.ok) throw new Error(result?.error?.message || result?.error || 'MLM AI 服務暫時無法使用');
+    return result;
+  } finally {
+    if(timer)clearTimeout(timer);
+  }
 }
 
 async function recognizeWithOpenAI(apiKey, model, images) {
@@ -238,13 +246,8 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
     console.error('Background card OCR failed',error);
     return {created:false,failed:true};
   }
-  // OCR 已成功寫入後才執行五大標籤。標籤失敗只能改變 _crmInsights，
-  // 不得回滾或覆蓋已辨識完成的名片聯絡資料。
-  try {
-    await processContactInsightsInBackground(db,userId,contact.id,apiKey,model);
-  } catch(error) {
-    console.error('Post-OCR CRM insight scheduling failed',error);
-  }
+  // 第一階段到此完成：OCR 寫入、收藏成立並回傳。五大標籤由呼叫端
+  // 另行排入背景工作，不得阻擋收藏、防重判定或名片贈點。
   await updateCardImportFingerprint(db,eventId,'completed');
   const saved=await db.prepare('SELECT * FROM contact_cards WHERE id=? AND scanner_user_id=?').bind(contact.id,userId).first();
   return {created:true,duplicate:false,card:rowToCard(saved)};
@@ -286,14 +289,53 @@ export async function processContactInsightsInBackground(db, userId, id, apiKey,
 }
 
 
+export async function queueMemberStaleCardAnalysis(db, userId, staleMinutes = 3) {
+  const minutes=Math.max(2,Math.min(Number(staleMinutes)||3,30));
+  const threshold=`-${minutes} minutes`;
+  const imports=await db.prepare(`SELECT cie.id event_id,cie.scanner_user_id
+    FROM card_import_events cie
+    JOIN contact_cards cc ON cc.id=cie.contact_card_id
+    WHERE cie.scanner_user_id=? AND cie.status IN ('received','processing')
+      AND cie.updated_at <= datetime('now',?) AND cc.status='active'
+    ORDER BY cie.updated_at ASC LIMIT 2`).bind(userId,threshold).all();
+  const importTasks=imports.results || [];
+  if(importTasks.length)await db.batch(importTasks.map((task)=>db.prepare(
+    "UPDATE card_import_events SET status='received',updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?"
+  ).bind(task.event_id,userId)));
+  const insights=await db.prepare(`SELECT cc.id,cc.scanner_user_id,cc.source_event_id event_id
+    FROM contact_cards cc
+    LEFT JOIN card_import_events cie ON cie.id=cc.source_event_id
+    WHERE cc.scanner_user_id=? AND cc.status='active'
+      AND COALESCE(json_extract(cc.versions_json,'$._crmInsights.status'),'') IN ('queued','processing')
+      AND cc.updated_at <= datetime('now',?)
+      AND (cie.id IS NULL OR cie.status NOT IN ('received','processing'))
+    ORDER BY cc.updated_at ASC LIMIT 3`).bind(userId,threshold).all();
+  const insightTasks=insights.results || [];
+  if(insightTasks.length){
+    const statements=insightTasks.map((task)=>db.prepare(
+      "UPDATE contact_cards SET versions_json=json_set(COALESCE(NULLIF(versions_json,''),'{}'),'$._crmInsights.status','queued','$._crmInsights.error',''),updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?"
+    ).bind(task.id,userId));
+    for(const task of insightTasks){
+      if(task.event_id)statements.push(db.prepare(
+        "UPDATE card_import_fingerprints SET status='completed',updated_at=CURRENT_TIMESTAMP WHERE event_id=?"
+      ).bind(task.event_id));
+    }
+    await db.batch(statements);
+  }
+  return {
+    imports:importTasks.map((task)=>({eventId:task.event_id,userId:task.scanner_user_id})),
+    insights:insightTasks.map((task)=>({id:task.id,userId:task.scanner_user_id,eventId:task.event_id || ''})),
+  };
+}
+
 export async function queueSystemCrmInsightBackfill(db, limit = 6) {
   const cappedLimit=Math.max(1,Math.min(Number(limit) || 6,20));
   const result=await db.prepare(`SELECT * FROM contact_cards
     WHERE status='active' AND (
       COALESCE(json_extract(versions_json, '$._crmInsights.status'),'') NOT IN ('ready','queued','processing')
       OR (json_extract(versions_json, '$._crmInsights.status')='ready' AND COALESCE(json_extract(versions_json, '$._crmInsights.analysisVersion'),'')!=?)
-      OR (json_extract(versions_json, '$._crmInsights.status')='queued' AND updated_at <= datetime('now','-10 minutes'))
-      OR (json_extract(versions_json, '$._crmInsights.status')='processing' AND updated_at <= datetime('now','-30 minutes'))
+      OR (json_extract(versions_json, '$._crmInsights.status')='queued' AND updated_at <= datetime('now','-5 minutes'))
+      OR (json_extract(versions_json, '$._crmInsights.status')='processing' AND updated_at <= datetime('now','-5 minutes'))
     ) ORDER BY updated_at ASC LIMIT ?`).bind(CRM_INSIGHT_ANALYSIS_VERSION,cappedLimit).all();
   const candidates=result.results || [];
   if(!candidates.length)return {queued:0,tasks:[]};

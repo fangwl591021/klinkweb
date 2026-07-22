@@ -65,6 +65,7 @@ import {
   submitImportInBackground,
   processImportInBackground,
   queueLegacyFailedImportRetries,
+  queueMemberStaleCardAnalysis,
   queueContactCrmInsights,
   processContactInsightsInBackground,
   queueSystemCrmInsightBackfill,
@@ -95,6 +96,7 @@ import {
 } from "./smart-match-history.js";
 import {
   queueAndFulfillCardCollectionReward,
+  reconcileMemberCardCollectionRewards,
   retryPendingCardCollectionRewards,
 } from "./card-collection-reward.js";
 
@@ -173,6 +175,24 @@ function officialTallLiffHtml(env, requestUrl) {
 async function resolveCardAiProvider(env) {
   if (env.MLM_WORKER) return env.MLM_WORKER;
   return resolveOpenAIKey(env.DB, env.SESSION_SIGNING_SECRET, env.OPENAI_API_KEY);
+}
+
+function scheduleCardImportPipeline(env, ctx, userId, eventId, provider = null) {
+  const task=(async()=>{
+    const aiProvider=provider || await resolveCardAiProvider(env);
+    if(!aiProvider)throw new Error('MLM AI 服務尚未連線');
+    // 第一階段：只做 OCR、寫入收藏與防重判斷。
+    const processed=await processImportInBackground(env.DB,env.MEDIA,userId,eventId,aiProvider,env.OPENAI_CARD_MODEL);
+    if(processed?.created){
+      // OCR 收藏成立後先贈點；五大標籤是第二階段，失敗不影響收藏與贈點。
+      await queueAndFulfillCardCollectionReward(env,userId,processed.card.id);
+      await processContactInsightsInBackground(env.DB,userId,processed.card.id,aiProvider,env.OPENAI_CARD_MODEL);
+    }
+    return processed;
+  })();
+  if(ctx?.waitUntil)ctx.waitUntil(task);
+  else task.catch((error)=>console.error('Background card OCR pipeline failed',error));
+  return task;
 }
 
 function scheduleContactCrmInsights(env, ctx, userId, id) {
@@ -642,7 +662,25 @@ async function app(request, env, ctx) {
   if (request.method === "GET" && url.pathname === "/v1/card-collection") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    return json({ success: true, cards: await listContacts(env.DB, member.userId, url.searchParams.get("search") || "") });
+    // 使用者開啟收藏頁時，立即救援因 Worker 重啟或 AI 逾時留下的舊工作。
+    // OCR 與五大標籤各自重跑，不再互相阻塞。
+    const recovery=await queueMemberStaleCardAnalysis(env.DB,member.userId,3).catch((error)=>{
+      console.error("Card analysis recovery scan failed",error);
+      return {imports:[],insights:[]};
+    });
+    for(const task of recovery.imports || [])scheduleCardImportPipeline(env,ctx,task.userId,task.eventId);
+    for(const task of recovery.insights || [])scheduleContactCrmInsights(env,ctx,task.userId,task.id);
+    // 舊版若已完成 OCR、卻在五大標籤階段中斷，補建該張名片唯一的贈點工作。
+    const rewardRecovery=reconcileMemberCardCollectionRewards(env,member.userId).catch((error)=>{
+      console.error("Card reward recovery failed",error);
+      return {scanned:0,completed:0};
+    });
+    if(ctx?.waitUntil)ctx.waitUntil(rewardRecovery);else rewardRecovery.catch(()=>null);
+    return json({
+      success:true,
+      cards:await listContacts(env.DB,member.userId,url.searchParams.get("search") || ""),
+      recovery:{imports:(recovery.imports || []).length,insights:(recovery.insights || []).length},
+    });
   }
 
   const smartMatchHistoryRoute = url.pathname.match(/^\/v1\/card-collection\/([^/]+)\/matching-history$/);
@@ -719,12 +757,7 @@ async function app(request, env, ctx) {
       const aiProvider=await resolveCardAiProvider(env);
       const result=await submitImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
       if(!result.existing){
-        const task=(async()=>{
-          const processed=await processImportInBackground(env.DB, env.MEDIA, member.userId, eventId, aiProvider, env.OPENAI_CARD_MODEL);
-          if(processed?.created) await queueAndFulfillCardCollectionReward(env,member.userId,processed.card.id);
-          return processed;
-        })();
-        if (ctx?.waitUntil) ctx.waitUntil(task); else task.catch((error)=>console.error("Background card analysis failed",error));
+        scheduleCardImportPipeline(env,ctx,member.userId,eventId,aiProvider);
       }
       return json({success:true,...result,analysis:result.existing?"existing":"queued",reward:result.existing?{status:"duplicate",points:0}:{status:"pending_validation",points:10}},result.existing?200:202);
     } catch(error) { return badRequest(error.message || "名片送出失敗"); }
