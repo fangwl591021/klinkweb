@@ -113,7 +113,6 @@ function badRequest(message) {
 }
 
 function officialTallLiffHtml(env, requestUrl) {
-  const liffId = String(env.OFFICIAL_LIFF_ID || "2007221311-nEOHqNxK");
   const url = new URL(requestUrl);
   let page = url.searchParams.get("page") || "";
   const liffState = url.searchParams.get("liff.state");
@@ -138,18 +137,10 @@ function officialTallLiffHtml(env, requestUrl) {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>康立官方網站</title>
-  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <style>*{box-sizing:border-box}html,body{min-height:100%;margin:0;background:#f7f4ed;color:#203329;font-family:system-ui,"Noto Sans TC",sans-serif}body{display:grid;place-items:center;padding:24px}main{width:min(320px,100%);text-align:center}.spinner{width:38px;height:38px;margin:0 auto 18px;border:4px solid #dfe9df;border-top-color:#328c45;border-radius:50%;animation:spin .8s linear infinite}h1{margin:0;font-size:21px}p{margin:10px 0 20px;color:#6c776f;line-height:1.6}a{display:inline-block;padding:11px 18px;border-radius:10px;background:#328c45;color:#fff;font-weight:800;text-decoration:none}@keyframes spin{to{transform:rotate(360deg)}}</style>
+  <style>*{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#fff}iframe{display:block;width:100%;height:100%;border:0;background:#fff}.loading{position:fixed;inset:0;z-index:1;display:grid;place-items:center;background:#f7f4ed;color:#203329;font:700 16px/1.5 system-ui,"Noto Sans TC",sans-serif;pointer-events:none}.loading::before{content:"";position:absolute;width:38px;height:38px;margin-top:-58px;border:4px solid #dfe9df;border-top-color:#328c45;border-radius:50%;animation:spin .8s linear infinite}.loading.hidden{display:none}@keyframes spin{to{transform:rotate(360deg)}}</style>
 </head>
-<body><main><div class="spinner"></div><h1>正在開啟康立官方網站</h1><p>將以 Tall 視窗瀏覽，關閉後會回到行動入口。</p><a id="continue" href=${JSON.stringify(target)}>繼續前往</a></main>
-<script>
-  const LIFF_ID=${JSON.stringify(liffId)};
-  const TARGET=${JSON.stringify(target)};
-  (async()=>{
-    try{await liff.init({liffId:LIFF_ID});}catch(error){console.warn("Official LIFF init failed",error);}
-    location.replace(TARGET);
-  })();
-</script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+<body><div id="loading" class="loading">正在載入康立官方網站…</div><iframe id="officialSite" src=${JSON.stringify(target)} title="康立官方網站" allow="fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+<script>document.querySelector("#officialSite").addEventListener("load",()=>document.querySelector("#loading").classList.add("hidden"));</script></body></html>`, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 function scheduleContactCrmInsights(env, ctx, userId, id) {
