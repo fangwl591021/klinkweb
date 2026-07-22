@@ -401,11 +401,42 @@ async function loadNumberScienceMatchingContext(env, member) {
   }
 }
 
+async function mergedAdminAccess(env, member) {
+  const localAccess=await getAdminAccess(env.DB,member.userId,env.ADMIN_LINE_SUBJECTS);
+  if(localAccess.canAccessAdmin)return localAccess;
+  if(!env.MLM_WORKER || typeof env.MLM_WORKER.fetch!=="function")return localAccess;
+  const lineUserId=await currentMemberLineSubject(env.DB,member.userId);
+  if(!lineUserId)return localAccess;
+  try{
+    const response=await env.MLM_WORKER.fetch("https://mlm.internal/api/internal/klinkweb/super-admin-status",{
+      method:"POST",headers:{"content-type":"application/json",accept:"application/json"},
+      body:JSON.stringify({lineUserId}),
+    });
+    const result=await response.json().catch(()=>({}));
+    if(response.ok&&result.status==="success"&&result.superAdmin)return {
+      canAccessAdmin:true,canManagePermissions:true,canManagePoints:true,canManageRichMenu:true,
+      systemAccess:true,operatorAccess:false,role:"mlm_super_admin",
+    };
+  }catch(error){console.warn("MLM super admin check failed",error);}
+  return localAccess;
+}
+
 async function currentAdmin(request, env) {
   const member = await currentMember(request, env);
   if (!member) return null;
-  const adminAccess = await getAdminAccess(env.DB, member.userId, env.ADMIN_LINE_SUBJECTS);
+  const adminAccess = await mergedAdminAccess(env,member);
   return adminAccess.canAccessAdmin ? { ...member, adminAccess } : null;
+}
+
+function adminSsoSuccessHtml(sessionToken) {
+  return new Response(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>正在開啟 Klinkweb</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8f6;color:#173429;font-family:system-ui,"Noto Sans TC",sans-serif}.box{text-align:center;padding:28px}.spinner{width:38px;height:38px;margin:0 auto 16px;border:4px solid #dcebe2;border-top-color:#08a84e;border-radius:50%;animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}</style></head><body><div class="box"><div class="spinner"></div><b>正在以 MLM 最高權限開啟 Klinkweb…</b></div><script>history.replaceState({},"","/admin/");localStorage.setItem("klinkweb_session",${JSON.stringify(sessionToken)});location.replace("/admin/");<\/script></body></html>`,{
+    headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","referrer-policy":"no-referrer"},
+  });
+}
+function adminSsoErrorHtml(message) {
+  return new Response(`<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Klinkweb 權限驗證失敗</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f8fafc;color:#172b4d;font-family:system-ui,"Noto Sans TC",sans-serif}.box{width:min(520px,calc(100% - 32px));padding:28px;border:1px solid #dfe7ef;border-radius:18px;background:#fff;box-shadow:0 18px 50px #172b4d18}h1{font-size:22px}p{color:#68798d;line-height:1.7}a{display:inline-block;margin-top:12px;padding:11px 16px;border-radius:10px;background:#08a84e;color:#fff;text-decoration:none;font-weight:800}</style></head><body><div class="box"><h1>無法開啟 Klinkweb</h1><p>${String(message||"驗證失敗").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}</p><a href="https://mlm.fangwl591021.workers.dev/console">返回 MLM 綜合主控台</a></div></body></html>`,{
+    status:403,headers:{"content-type":"text/html; charset=utf-8","cache-control":"no-store","referrer-policy":"no-referrer"},
+  });
 }
 
 function randomInviteToken() {
@@ -482,6 +513,27 @@ function courseCheckinCompactLiffHtml(env, origin) {
 
 async function app(request, env, ctx) {
   const url = new URL(request.url);
+  if(request.method==="GET"&&url.pathname==="/admin/sso"){
+    if(!env.MLM_WORKER || typeof env.MLM_WORKER.fetch!=="function")return adminSsoErrorHtml("MLM 單一登入服務尚未連線");
+    const token=String(url.searchParams.get("token")||"").trim();
+    if(!token)return adminSsoErrorHtml("管理入口缺少驗證資料");
+    try{
+      const response=await env.MLM_WORKER.fetch("https://mlm.internal/api/internal/klinkweb/consume-admin-sso",{
+        method:"POST",headers:{"content-type":"application/json",accept:"application/json"},
+        body:JSON.stringify({token}),
+      });
+      const result=await response.json().catch(()=>({}));
+      if(!response.ok||result.status!=="success")return adminSsoErrorHtml(result.message||result.error||"管理入口已失效");
+      const identity=await env.DB.prepare(`SELECT platform_user_id FROM external_identities
+        WHERE provider='line_login' AND provider_subject=? AND verification_status='verified' LIMIT 1`).bind(result.lineUserId).first();
+      if(!identity?.platform_user_id)return adminSsoErrorHtml("此 LINE 帳號尚未建立康立會員，請先開啟康立行動入口完成一次登入，再回 MLM 主控台重試。");
+      const sessionToken=await createSession(identity.platform_user_id,env.SESSION_SIGNING_SECRET);
+      return adminSsoSuccessHtml(sessionToken);
+    }catch(error){
+      console.error("Klinkweb admin SSO failed",error);
+      return adminSsoErrorHtml(error.message||"管理入口驗證失敗");
+    }
+  }
   if (
     (request.method === "GET" || request.method === "HEAD") &&
     url.pathname === "/admin"
@@ -635,7 +687,7 @@ async function app(request, env, ctx) {
   if (request.method === "GET" && url.pathname === "/v1/me") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
-    const adminAccess = await getAdminAccess(env.DB, member.userId, env.ADMIN_LINE_SUBJECTS);
+    const adminAccess = await mergedAdminAccess(env,member);
     return json({ success: true, member: { ...member, adminAccess } });
   }
 
