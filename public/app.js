@@ -1472,11 +1472,12 @@ function crmInsightSection(card) {
 }
 
 async function showContactEditor(card) {
-  const view = state.collectionCardView || "contact";
+  const requestedView = state.collectionCardView || "contact";
+  const view = ["contact", "edit", "insights"].includes(requestedView) ? requestedView : "contact";
   const selected = state.collectionCardVersion && cardVersionMeta[state.collectionCardVersion]
     ? { id:state.collectionCardVersion, ...(card.versions?.[state.collectionCardVersion] || {}), ...cardVersionMeta[state.collectionCardVersion] }
     : activeCardVersion(card);
-  const tabs = `<div class="business-card-tabs"><button data-collection-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-collection-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-collection-card-tab="digital" class="${view === "digital" ? "active" : ""}">數位名片</button><button data-collection-card-tab="insights" class="${view === "insights" ? "active" : ""}">五大標籤</button></div>`;
+  const tabs = `<div class="business-card-tabs"><button data-collection-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-collection-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-collection-card-tab="insights" class="${view === "insights" ? "active" : ""}">五大標籤</button></div>`;
   let panel = "";
   if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(card)}<div class="business-card-contact-actions">${cardActionItems(card).map((item) => `<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type) ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
   if (view === "edit") panel = `<form id="collectionCardForm" class="business-card-form">${collectionForm(card,"contact")}<button class="btn full" type="submit">儲存聯絡資料</button><button class="btn danger full" type="button" id="deleteContact">刪除名片</button></form>`;

@@ -135,8 +135,8 @@
 @media(max-width:900px){.crm-insights-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.crm-insight-card:last-child{grid-column:1/-1}}
 @media(max-width:520px){.crm-insights-grid{grid-template-columns:1fr}.crm-insight-card:last-child{grid-column:auto}}
 
-/* 名片詳細資料：聯絡資料、編輯內容、數位名片、五大標籤四個分頁。 */
-.business-card-tabs{grid-template-columns:repeat(4,1fr)}
+/* 收藏名片暫時只顯示聯絡資料、編輯內容、五大標籤。 */
+.collection-editor .business-card-tabs{grid-template-columns:repeat(3,1fr)}
 
 /* LIFF 手機畫面：鎖定於裝置視窗，避免長網址或名片內容撐寬後整頁被縮小。 */
 html,body{width:100%;max-width:100%;overflow-x:hidden;overscroll-behavior-x:none}
