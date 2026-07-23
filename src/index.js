@@ -736,20 +736,20 @@ async function app(request, env, ctx) {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try { return json({ success: true, event: await savePersonalCalendarEvent(env.DB, member.userId, (await readJson(request)) || {}) }); }
-    catch (error) { return json({ success: false, error: error.message || "私人行程儲存失敗" }, 400); }
+    catch (error) { return json({ success: false, error: error.message || "行程儲存失敗" }, 400); }
   }
   const personalEventMatch = url.pathname.match(/^\/v1\/personal-calendar\/events\/([^/]+)$/);
   if (personalEventMatch && request.method === "PATCH") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try { return json({ success: true, event: await savePersonalCalendarEvent(env.DB, member.userId, (await readJson(request)) || {}, decodeURIComponent(personalEventMatch[1])) }); }
-    catch (error) { return json({ success: false, error: error.message || "私人行程更新失敗" }, 400); }
+    catch (error) { return json({ success: false, error: error.message || "行程更新失敗" }, 400); }
   }
   if (personalEventMatch && request.method === "DELETE") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
     try { await deletePersonalCalendarEvent(env.DB, member.userId, decodeURIComponent(personalEventMatch[1])); return json({ success: true }); }
-    catch (error) { return json({ success: false, error: error.message || "私人行程刪除失敗" }, 400); }
+    catch (error) { return json({ success: false, error: error.message || "行程刪除失敗" }, 400); }
   }
 
   if (url.pathname === "/v1/personal-calendar/labels" && request.method === "POST") {
