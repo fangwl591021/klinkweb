@@ -1872,9 +1872,15 @@ async function publicSharedContact(){
   } catch(error) { $("#app").innerHTML=`<section class="center">${esc(error.message||"分享名片不存在或已停止分享")}</section>`; }
 }
 
+const SMART_MATCH_SCOPE_MESSAGE = "智能配對僅提供性格互補與事業夥伴篩選，其他問題不在此功能的回應範圍。";
+function isSupportedSmartMatchQuery(value = "") {
+  const query = String(value || "").trim().slice(0, 300);
+  return /(性格|個性|人格|互補|合拍|契合|默契|相處|溝通風格|工作風格|事業|商務|商業|合作|合夥|夥伴|伙伴|人脈|創業|團隊|引薦|供應商|廠商|通路|經銷|顧問|教練|行銷|業務|設計|法律|律師|會計|攝影|影片|工程|技術|人才|專業服務)/.test(query);
+}
+
 async function smartMatch() {
   state.tab = "smartMatch";
-  layout(`<section class="card smart-match-card"><div class="smart-match-intro"><span>AI</span><div><h2>智能人脈配對</h2><p class="muted">說明你正在尋找的合作夥伴、專業或服務，AI 會結合名片五大標籤與你已購買的数字科学背景，選出最多 3 位合適人選。</p></div></div><label for="smartMatchQuery">我想尋找</label><textarea id="smartMatchQuery" rows="4" maxlength="300" placeholder="例如：想找熟悉社群行銷、能協助健康品牌拓展年輕客群的合作夥伴"></textarea><div class="smart-match-pool"><span id="smartMatchPool">正在讀取名片收藏…</span><small>電話、Email、地址與私人備註不會傳給 AI；已購数字科学報告只作低權重參考，不另扣點</small></div><button class="btn" id="startSmartMatch" disabled>開始智能配對</button></section><section id="smartMatchResults" class="smart-match-results"><div class="card collection-empty">輸入需求後，配對結果會顯示在這裡。</div></section>`);
+  layout(`<section class="card smart-match-card"><div class="smart-match-intro"><span>AI</span><div><h2>智能人脈配對</h2><p class="muted">請輸入性格互補或事業夥伴篩選需求；AI 會結合名片五大標籤與你已購買的数字科学背景，選出最多 3 位合適人選。</p></div></div><label for="smartMatchQuery">我想尋找</label><textarea id="smartMatchQuery" rows="4" maxlength="300" placeholder="例如：尋找性格互補、適合共同拓展健康市場的事業夥伴"></textarea><div class="smart-match-pool"><span id="smartMatchPool">正在讀取名片收藏…</span><small>電話、Email、地址與私人備註不會傳給 AI；已購数字科学報告只作低權重參考，不另扣點</small></div><button class="btn" id="startSmartMatch" disabled>開始智能配對</button></section><section id="smartMatchResults" class="smart-match-results"><div class="card collection-empty">輸入需求後，配對結果會顯示在這裡。</div></section>`);
   const button = $("#startSmartMatch");
   try {
     collectionCards = (await api("/v1/card-collection")).cards || [];
@@ -1886,6 +1892,10 @@ async function smartMatch() {
   button.onclick = async () => {
     const query = $("#smartMatchQuery").value.trim();
     if (query.length < 2) return alert("請輸入至少 2 個字的配對需求");
+    if (!isSupportedSmartMatchQuery(query)) {
+      $("#smartMatchResults").innerHTML = `<div class="card collection-empty">${SMART_MATCH_SCOPE_MESSAGE}</div>`;
+      return;
+    }
     try {
       const result = await withActionFeedback(button, () => api("/v1/card-collection/match", { method:"POST", body:JSON.stringify({ query }) }), { busy:"AI 配對中…", success:"配對完成" });
       const matches = result.matches || [];
@@ -1895,7 +1905,8 @@ async function smartMatch() {
       document.querySelectorAll("[data-match-card-id]").forEach((row) => row.onclick = () => showContactEditor(collectionCards.find((card) => card.id === row.dataset.matchCardId)));
       attachCollectionImages();
     } catch (error) {
-      alert(error.message || "智能配對失敗");
+      const message = error.message || "智能配對失敗";
+      $("#smartMatchResults").innerHTML = `<div class="card collection-empty">${esc(message)}</div>`;
     }
   };
 }
