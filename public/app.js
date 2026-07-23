@@ -1996,7 +1996,15 @@ async function profile(required = false) {
           }),
         }), { busy: required ? "註冊處理中…" : "儲存中…", success: required ? "註冊完成" : "已儲存" })
       ).member;
-      alert(required ? "註冊完成" : "已儲存");
+      let lineSyncError = "";
+      try {
+        await syncAiWearMemberLineUrl(state.member.lineUrl);
+      } catch (syncError) {
+        lineSyncError = syncError.message || "試戴聯絡網址同步失敗";
+      }
+      alert(lineSyncError
+        ? `${required ? "註冊完成" : "會員資料已儲存"}，但${lineSyncError}，請稍後再按儲存。`
+        : required ? "註冊完成" : "會員資料與試戴 LINE 網址已儲存");
       const afterProfile = sessionStorage.getItem("klinkweb_after_profile");
       sessionStorage.removeItem("klinkweb_after_profile");
       state.tab = afterProfile === "zodiac" ? "zodiac" : state.courseSession ? "courses" : "home";
