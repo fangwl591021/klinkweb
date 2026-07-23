@@ -394,3 +394,22 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
   .portal-menu-text button{font-size:14px}
   .site-home-frame{height:auto;min-height:440px}
 }
+
+
+/* Home hero brand alignment and compact single-line tagline. */
+.klink-home-hero .klink-brand{
+  width:max-content;
+  max-width:100%;
+  margin-inline:auto;
+  justify-content:center;
+}
+.klink-home-hero>p{
+  max-width:none;
+  margin:14px 0 18px;
+  color:#e3e9e4;
+  font-size:clamp(10px,2.8vw,12px);
+  line-height:1.4;
+  letter-spacing:-.25px;
+  text-align:center;
+  white-space:nowrap;
+}
