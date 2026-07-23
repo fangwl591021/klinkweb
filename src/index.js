@@ -97,6 +97,7 @@ import {
   updateCalendarLabel,
 } from "./personal-calendar.js";
 import { buildMatchingCandidates, isSupportedMatchingQuery, matchContacts, SMART_MATCH_SCOPE_MESSAGE } from "./smart-matching.js";
+import { askMlmProductAdvisor } from "./product-advisor.js";
 import {
   findCachedSmartMatch,
   listContactSmartMatchHistory,
@@ -904,6 +905,28 @@ async function app(request, env, ctx) {
       });
     } catch (error) {
       return badRequest(error.message || "智能配對失敗");
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/smart-product/ask") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      const body = (await readJson(request)) || {};
+      const numberScience = await loadNumberScienceMatchingContext(env, member);
+      const result = await askMlmProductAdvisor(env.MLM_WORKER, {
+        query: body.query,
+        profileContext: numberScience.text,
+        memberLineUrl: member.lineUrl,
+      });
+      return json({
+        success: true,
+        ...result,
+        profileStyleUsed: Boolean(numberScience.text),
+      });
+    } catch (error) {
+      const message = error.message || "康立商品詢問失敗";
+      return json({ success: false, error: message }, /至少 2 個字/.test(message) ? 400 : 502);
     }
   }
 
