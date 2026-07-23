@@ -63,7 +63,7 @@ async function ensureSystemLabels(db, userId) {
     `).bind(userId, label.sourceType).all();
     const rows = result.results || [];
     if (!rows.length) {
-      await db.prepare(`INSERT INTO personal_calendar_labels
+      await db.prepare(`INSERT OR IGNORE INTO personal_calendar_labels
         (id, platform_user_id, source_type, name, color, is_visible, is_system, sort_order)
         VALUES (?, ?, ?, ?, ?, 1, 1, ?)`)
         .bind(newId("cal_label"), userId, label.sourceType, label.name, label.color, label.sortOrder).run();
@@ -250,11 +250,24 @@ export async function createCalendarLabel(db, userId, body) {
   const name = text(body.name, 20);
   const color = /^#[0-9a-f]{6}$/i.test(String(body.color || "")) ? body.color : "#64748b";
   if (!name) throw new Error("請輸入標籤名稱");
+
+  const findExisting = () => db.prepare(`SELECT * FROM personal_calendar_labels
+    WHERE platform_user_id=? AND source_type='custom' AND lower(name)=lower(?)
+    ORDER BY created_at ASC LIMIT 1`).bind(userId, name).first();
+  let existing = await findExisting();
+  if (existing) {
+    await db.prepare("UPDATE personal_calendar_labels SET color=?, is_visible=1, updated_at=CURRENT_TIMESTAMP WHERE id=? AND platform_user_id=?")
+      .bind(color, existing.id, userId).run();
+    return mapLabel(await ownedLabel(db, userId, existing.id));
+  }
+
   const id = newId("cal_label");
-  await db.prepare(`INSERT INTO personal_calendar_labels
+  await db.prepare(`INSERT OR IGNORE INTO personal_calendar_labels
     (id, platform_user_id, source_type, name, color, is_visible, is_system, sort_order)
     VALUES (?, ?, 'custom', ?, ?, 1, 0, 100)`).bind(id, userId, name, color).run();
-  return mapLabel(await ownedLabel(db, userId, id));
+  existing = await findExisting();
+  if (!existing) throw new Error("標籤建立失敗，請稍後再試");
+  return mapLabel(existing);
 }
 
 export async function updateCalendarLabel(db, userId, labelId, body) {
