@@ -96,7 +96,7 @@ import {
   savePersonalCalendarEvent,
   updateCalendarLabel,
 } from "./personal-calendar.js";
-import { buildMatchingCandidates, matchContacts } from "./smart-matching.js";
+import { buildMatchingCandidates, isSupportedMatchingQuery, matchContacts, SMART_MATCH_SCOPE_MESSAGE } from "./smart-matching.js";
 import {
   findCachedSmartMatch,
   listContactSmartMatchHistory,
@@ -867,6 +867,7 @@ async function app(request, env, ctx) {
     try {
       const body = (await readJson(request)) || {};
       const query = String(body.query || "").trim();
+      if (!isSupportedMatchingQuery(query)) return badRequest(SMART_MATCH_SCOPE_MESSAGE);
       const contacts = await listContacts(env.DB, member.userId, "");
       const numberScience = await loadNumberScienceMatchingContext(env, member);
       const requestKey = await sha256(JSON.stringify({
