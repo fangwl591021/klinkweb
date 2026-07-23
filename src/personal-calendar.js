@@ -53,15 +53,34 @@ export async function ensurePersonalCalendarSchema(db) {
 
 async function ensureSystemLabels(db, userId) {
   for (const label of SYSTEM_LABELS) {
-    await db.prepare(`INSERT OR IGNORE INTO personal_calendar_labels
-      (id, platform_user_id, source_type, name, color, is_visible, is_system, sort_order)
-      VALUES (?, ?, ?, ?, ?, 1, 1, ?)`)
-      .bind(newId("cal_label"), userId, label.sourceType, label.name, label.color, label.sortOrder).run();
+    const result = await db.prepare(`
+      SELECT l.*, COUNT(e.id) AS event_count
+      FROM personal_calendar_labels l
+      LEFT JOIN personal_calendar_events e ON e.label_id = l.id AND e.platform_user_id = l.platform_user_id
+      WHERE l.platform_user_id = ? AND l.source_type = ? AND l.is_system = 1
+      GROUP BY l.id
+      ORDER BY event_count DESC, l.created_at ASC, l.id ASC
+    `).bind(userId, label.sourceType).all();
+    const rows = result.results || [];
+    if (!rows.length) {
+      await db.prepare(`INSERT INTO personal_calendar_labels
+        (id, platform_user_id, source_type, name, color, is_visible, is_system, sort_order)
+        VALUES (?, ?, ?, ?, ?, 1, 1, ?)`)
+        .bind(newId("cal_label"), userId, label.sourceType, label.name, label.color, label.sortOrder).run();
+      continue;
+    }
+    const canonical = rows[0];
+    for (const duplicate of rows.slice(1)) {
+      await db.batch([
+        db.prepare("UPDATE personal_calendar_events SET label_id=?, updated_at=CURRENT_TIMESTAMP WHERE platform_user_id=? AND label_id=?")
+          .bind(canonical.id, userId, duplicate.id),
+        db.prepare("DELETE FROM personal_calendar_labels WHERE id=? AND platform_user_id=? AND is_system=1")
+          .bind(duplicate.id, userId),
+      ]);
+    }
+    await db.prepare("UPDATE personal_calendar_labels SET name=?, color=?, sort_order=?, updated_at=CURRENT_TIMESTAMP WHERE id=? AND platform_user_id=?")
+      .bind(label.name, label.color, label.sortOrder, canonical.id, userId).run();
   }
-  await db.prepare(`UPDATE personal_calendar_labels SET name='未分類', updated_at=CURRENT_TIMESTAMP
-    WHERE platform_user_id=? AND source_type='personal' AND is_system=1 AND name='個人'
-      AND NOT EXISTS (SELECT 1 FROM personal_calendar_labels WHERE platform_user_id=? AND name='未分類')`)
-    .bind(userId, userId).run();
 }
 
 function mapLabel(row) {
