@@ -344,3 +344,53 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
 
 /* Referral sharing uses the invite URL directly; this project has no personal card. */
 .share-invite-url{width:100%;margin:8px 0 12px;padding:10px 12px;border:1px solid #eadde1;border-radius:10px;background:#fff;color:#5c6572;font-size:12px;line-height:1.5;word-break:break-all;user-select:all}
+
+
+/* K-LINK official green brand banner and large text-only member navigation. */
+.member-portal,
+.member-hero{
+  background:
+    radial-gradient(circle at 12% 50%,rgba(132,199,77,.45) 0,rgba(132,199,77,0) 34%),
+    linear-gradient(115deg,#0a9c52 0%,#007b45 48%,#004b31 100%);
+}
+.portal-profile{min-height:112px;border-right:1px solid rgba(255,255,255,.38)}
+.portal-profile .avatar{width:52px;height:52px}
+.portal-profile strong,.daily-banner-profile strong{font-size:14px}
+.portal-primary{min-height:112px;padding:14px 10px;text-align:center}
+.portal-primary+.portal-primary{border-left:1px solid rgba(255,255,255,.38)}
+.portal-primary span:not(.portal-icon){font-size:15px;font-weight:850;letter-spacing:.2px}
+.portal-primary strong{margin-top:3px;font-size:24px;font-weight:900}
+.portal-menu-text{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  padding:12px 10px 14px;
+  border-bottom:2px solid #dcefe4;
+  background:#fff;
+}
+.portal-menu-text button{
+  display:grid;
+  min-height:50px;
+  place-items:center;
+  padding:9px 5px;
+  border:1px solid #d5e9de;
+  border-radius:11px;
+  background:#f5fbf7;
+  color:#075f38;
+  font-size:15px;
+  font-weight:900;
+  line-height:1.25;
+}
+.portal-menu-text button:active,.portal-menu-text button:focus-visible{
+  border-color:#15985a;
+  background:#e6f6ed;
+  color:#004b31;
+  outline:none;
+}
+.portal-menu-text .portal-menu-icon{display:none!important}
+@media(min-width:720px){
+  .portal-menu-text{grid-template-columns:repeat(6,minmax(0,1fr))}
+}
+@media(max-width:420px){
+  .portal-menu-text button{font-size:14px}
+  .site-home-frame{height:auto;min-height:440px}
+}
