@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMatchingCandidates, matchContacts, resolveMatchingResults } from '../src/smart-matching.js';
+import { buildMatchingCandidates, isSupportedMatchingQuery, matchContacts, resolveMatchingResults, SMART_MATCH_SCOPE_MESSAGE } from '../src/smart-matching.js';
 
 const contacts = [{
   id: 'c1', displayName: '王小明', companyName: '示範公司', jobTitle: '顧問', department: '業務',
@@ -42,4 +42,21 @@ test('smart matching uses the MLM service binding without exposing an API key', 
   const result = await matchContacts({ contacts, member:{displayName:'測試會員'}, query:'尋找企業顧問', apiKey:provider });
   assert.equal(requestUrl, 'https://mlm.internal/api/internal/ai/responses');
   assert.equal(result[0].card.id, 'c1');
+});
+
+
+test('smart matching only accepts personality complement or business partner requests', () => {
+  assert.equal(isSupportedMatchingQuery('尋找性格互補的合作對象'), true);
+  assert.equal(isSupportedMatchingQuery('需要適合拓展市場的事業夥伴'), true);
+  assert.equal(isSupportedMatchingQuery('今天天氣如何'), false);
+});
+
+test('out-of-scope requests are rejected before calling the AI provider', async () => {
+  let called = false;
+  const provider = { async fetch() { called = true; return Response.json({}); } };
+  await assert.rejects(
+    () => matchContacts({ contacts, member:{displayName:'測試會員'}, query:'今天天氣如何', apiKey:provider }),
+    new RegExp(SMART_MATCH_SCOPE_MESSAGE),
+  );
+  assert.equal(called, false);
 });
