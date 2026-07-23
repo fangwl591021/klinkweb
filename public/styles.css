@@ -340,3 +340,7 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
     line-height:1.4;
   }
 }
+
+
+/* Referral sharing uses the invite URL directly; this project has no personal card. */
+.share-invite-url{width:100%;margin:8px 0 12px;padding:10px 12px;border:1px solid #eadde1;border-radius:10px;background:#fff;color:#5c6572;font-size:12px;line-height:1.5;word-break:break-all;user-select:all}
