@@ -86,6 +86,8 @@ const state = {
   calendarRegisteredIds: new Set(),
   calendarMonth: "",
   calendarSelectedDate: "",
+  calendarLabels: [],
+  calendarContacts: [],
 };
 const $ = (s) => document.querySelector(s);
 let dailyRotationTimer = null;
@@ -583,77 +585,120 @@ function calendarMonthKey(value = new Date()) {
   const month = parts.find((part) => part.type === "month")?.value || "";
   return year && month ? `${year}-${month}` : "";
 }
-function calendarTimeText(session) {
-  const start = new Date(session.startsAt);
-  const end = new Date(session.endsAt);
+function calendarTimeText(event) {
+  if (event.allDay) return "全天";
+  const start = new Date(event.startsAt), end = new Date(event.endsAt);
   if (!Number.isFinite(start.getTime())) return "時間未設定";
-  const formatter = new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", hour:"2-digit", minute:"2-digit", hour12:false });
-  return Number.isFinite(end.getTime()) ? `${formatter.format(start)}–${formatter.format(end)}` : formatter.format(start);
+  const fmt = new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", hour:"2-digit", minute:"2-digit", hour12:false });
+  return Number.isFinite(end.getTime()) ? `${fmt.format(start)}–${fmt.format(end)}` : fmt.format(start);
+}
+function calendarLocalInput(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("sv-SE", { timeZone:"Asia/Taipei", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", minute:"2-digit", hour12:false }).format(date);
+  return parts.replace(" ", "T");
+}
+function calendarIsoFromLocal(value) {
+  return new Date(`${value}:00+08:00`).toISOString();
+}
+function calendarReminderText(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return "不提醒";
+  if (value === 1440) return "1 天前提醒";
+  if (value >= 60) return `${value / 60} 小時前提醒`;
+  return `${value} 分鐘前提醒`;
+}
+async function reloadPersonalCalendar() {
+  state.calendarSessions = null;
+  await personalCalendar();
+}
+async function setCalendarLabelVisible(label, visible) {
+  await api(`/v1/personal-calendar/labels/${encodeURIComponent(label.id)}`, { method:"PATCH", body:JSON.stringify({ visible }) });
+  label.visible = visible;
+  renderPersonalCalendarView();
+}
+async function createCalendarLabelPrompt() {
+  const name = prompt("自訂標籤名稱（最多 20 字）");
+  if (!name?.trim()) return;
+  const color = prompt("標籤顏色（例如 #52637d）", "#52637d") || "#52637d";
+  try { await api("/v1/personal-calendar/labels", { method:"POST", body:JSON.stringify({ name:name.trim(), color }) }); await reloadPersonalCalendar(); }
+  catch (error) { alert(error.message || "標籤建立失敗"); }
+}
+function openCalendarEventDialog(event = null) {
+  const editableLabels = state.calendarLabels.filter((label) => !["company","birthday"].includes(label.sourceType));
+  const personalLabel = editableLabels.find((label) => label.sourceType === "personal") || editableLabels[0];
+  if (!personalLabel) return alert("目前沒有可用的個人標籤");
+  const selectedDate = state.calendarSelectedDate || calendarDateKey(new Date());
+  const defaultStart = `${selectedDate}T09:00`;
+  const defaultEnd = `${selectedDate}T10:00`;
+  const dialog = document.createElement("dialog");
+  dialog.className = "personal-calendar-dialog";
+  dialog.innerHTML = `<form method="dialog" class="personal-calendar-form"><header><div><small>${event ? "編輯私人行程" : "新增私人行程"}</small><h2>${event ? esc(event.title) : "安排新行程"}</h2></div><button type="button" data-close>×</button></header><label>行程名稱<input name="title" maxlength="100" required value="${esc(event?.title || "")}"></label><div class="personal-calendar-form-grid"><label>標籤<select name="labelId">${editableLabels.map((label) => `<option value="${esc(label.id)}" ${label.id === (event?.labelId || personalLabel.id) ? "selected" : ""}>${esc(label.name)}</option>`).join("")}</select></label><label>關聯名片<select name="contactCardId"><option value="">不關聯名片</option>${state.calendarContacts.map((contact) => `<option value="${esc(contact.id)}" ${contact.id === event?.contactCardId ? "selected" : ""}>${esc(contact.displayName)}${contact.companyName ? `｜${esc(contact.companyName)}` : ""}</option>`).join("")}</select></label><label>開始時間<input name="startsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.startsAt) : defaultStart}"></label><label>結束時間<input name="endsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.endsAt) : defaultEnd}"></label><label>提醒時間<select name="reminderMinutes">${[[0,"不提醒"],[10,"10 分鐘前"],[30,"30 分鐘前"],[60,"1 小時前"],[1440,"1 天前"]].map(([value,label]) => `<option value="${value}" ${Number(event?.reminderMinutes || 0) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>地點<input name="location" maxlength="300" value="${esc(event?.location || "")}"></label></div><label>備註<textarea name="description" maxlength="2000" rows="3">${esc(event?.description || "")}</textarea></label><div class="personal-calendar-form-actions">${event ? `<button type="button" class="danger" data-delete>刪除行程</button>` : ""}<button type="button" class="btn alt" data-close>取消</button><button type="submit" class="btn">儲存行程</button></div></form>`;
+  document.body.append(dialog);
+  dialog.querySelectorAll("[data-close]").forEach((button) => button.onclick = () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.querySelector("form").onsubmit = async (submitEvent) => {
+    submitEvent.preventDefault();
+    const form = new FormData(submitEvent.currentTarget);
+    const payload = { title:form.get("title"), labelId:form.get("labelId"), contactCardId:form.get("contactCardId"), startsAt:calendarIsoFromLocal(form.get("startsAt")), endsAt:calendarIsoFromLocal(form.get("endsAt")), reminderMinutes:Number(form.get("reminderMinutes") || 0), location:form.get("location"), description:form.get("description") };
+    const saveButton = submitEvent.currentTarget.querySelector(`button[type="submit"]`);
+    await withBusyButton(saveButton, "儲存中…", async () => {
+      await api(event ? `/v1/personal-calendar/events/${encodeURIComponent(event.id)}` : "/v1/personal-calendar/events", { method:event ? "PATCH" : "POST", body:JSON.stringify(payload) });
+      dialog.close();
+      await reloadPersonalCalendar();
+    }).catch((error) => alert(error.message || "行程儲存失敗"));
+  };
+  const deleteButton = dialog.querySelector("[data-delete]");
+  if (deleteButton) deleteButton.onclick = async () => {
+    if (!confirm("確定刪除這筆私人行程？")) return;
+    await withBusyButton(deleteButton, "刪除中…", async () => { await api(`/v1/personal-calendar/events/${encodeURIComponent(event.id)}`, { method:"DELETE" }); dialog.close(); await reloadPersonalCalendar(); }).catch((error) => alert(error.message || "刪除失敗"));
+  };
+  dialog.showModal();
 }
 function renderPersonalCalendarView() {
-  const sessions = Array.isArray(state.calendarSessions) ? state.calendarSessions : [];
+  const visibleLabelIds = new Set(state.calendarLabels.filter((label) => label.visible).map((label) => label.id));
+  const sessions = (Array.isArray(state.calendarSessions) ? state.calendarSessions : []).filter((event) => visibleLabelIds.has(event.labelId));
   const monthKey = state.calendarMonth || calendarMonthKey();
   const [year, month] = monthKey.split("-").map(Number);
-  const first = new Date(year, month - 1, 1);
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const leading = first.getDay();
-  const monthSessions = sessions.filter((session) => calendarDateKey(session.startsAt).startsWith(monthKey));
+  const first = new Date(year, month - 1, 1), daysInMonth = new Date(year, month, 0).getDate(), leading = first.getDay();
+  const monthSessions = sessions.filter((event) => calendarDateKey(event.startsAt).startsWith(monthKey));
   const eventMap = new Map();
-  monthSessions.forEach((session) => {
-    const key = calendarDateKey(session.startsAt);
-    if (!eventMap.has(key)) eventMap.set(key, []);
-    eventMap.get(key).push(session);
-  });
+  monthSessions.forEach((event) => { const key=calendarDateKey(event.startsAt); if(!eventMap.has(key))eventMap.set(key,[]); eventMap.get(key).push(event); });
   const todayKey = calendarDateKey(new Date());
   if (!state.calendarSelectedDate || !state.calendarSelectedDate.startsWith(monthKey)) state.calendarSelectedDate = todayKey.startsWith(monthKey) ? todayKey : `${monthKey}-01`;
-  const cells = [];
-  for (let i = 0; i < leading; i += 1) cells.push(`<span class="personal-calendar-empty"></span>`);
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const key = `${monthKey}-${String(day).padStart(2, "0")}`;
-    const count = (eventMap.get(key) || []).length;
-    cells.push(`<button class="personal-calendar-day${key === todayKey ? " today" : ""}${key === state.calendarSelectedDate ? " selected" : ""}" data-calendar-date="${key}"><span>${day}</span>${count ? `<b>${count}</b><i></i>` : ""}</button>`);
-  }
-  const selectedEvents = (eventMap.get(state.calendarSelectedDate) || []).sort((a,b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
-  const selectedLabel = new Intl.DateTimeFormat("zh-TW", { timeZone:"Asia/Taipei", month:"long", day:"numeric", weekday:"short" }).format(new Date(`${state.calendarSelectedDate}T12:00:00+08:00`));
-  const eventHtml = selectedEvents.length ? selectedEvents.map((session) => {
-    const registered = state.calendarRegisteredIds.has(String(session.sessionId || ""));
-    const place = session.mode === "online" ? "線上活動" : (session.venueName || session.venueAddress || "地點未定");
-    return `<article class="personal-calendar-event"><div class="personal-calendar-event-time"><b>${esc(calendarTimeText(session))}</b><span>${session.mode === "online" ? "線上" : "實體"}</span></div><div class="personal-calendar-event-copy"><div><small>MLM 行事曆${registered ? "・已報名" : ""}</small><h3>${esc(session.title || session.courseTitle || "未命名活動")}</h3></div><p>${esc(place)}</p>${session.courseDescription ? `<p class="muted">${esc(session.courseDescription)}</p>` : ""}</div></article>`;
-  }).join("") : `<div class="personal-calendar-no-event">這一天沒有 MLM 活動。</div>`;
-  layout(`<section class="personal-calendar-card"><header class="personal-calendar-toolbar"><button id="calendarPrev" type="button" aria-label="上個月">‹</button><div><small>MLM SYNC</small><h2>${year} 年 ${month} 月</h2></div><button id="calendarNext" type="button" aria-label="下個月">›</button></header><div class="personal-calendar-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="personal-calendar-grid">${cells.join("")}</div><div class="personal-calendar-sync-note"><span>●</span> 已同步 MLM 內部行事曆，共 ${monthSessions.length} 項活動</div></section><section class="personal-calendar-agenda"><header><div><small>當日行程</small><h2>${esc(selectedLabel)}</h2></div><button id="calendarToday" type="button">今天</button></header>${eventHtml}</section>`);
-  document.querySelectorAll("[data-calendar-date]").forEach((button) => {
-    button.onclick = () => { state.calendarSelectedDate = button.dataset.calendarDate || ""; renderPersonalCalendarView(); };
-  });
-  $("#calendarPrev").onclick = () => {
-    const next = new Date(year, month - 2, 1);
-    state.calendarMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;
-    state.calendarSelectedDate = "";
-    renderPersonalCalendarView();
-  };
-  $("#calendarNext").onclick = () => {
-    const next = new Date(year, month, 1);
-    state.calendarMonth = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;
-    state.calendarSelectedDate = "";
-    renderPersonalCalendarView();
-  };
-  $("#calendarToday").onclick = () => { state.calendarMonth = calendarMonthKey(); state.calendarSelectedDate = calendarDateKey(new Date()); renderPersonalCalendarView(); };
+  const cells=[];
+  for(let i=0;i<leading;i+=1)cells.push(`<span class="personal-calendar-empty"></span>`);
+  for(let day=1;day<=daysInMonth;day+=1){const key=`${monthKey}-${String(day).padStart(2,"0")}`,events=eventMap.get(key)||[],colors=[...new Set(events.map((event)=>event.color))].slice(0,3);cells.push(`<button class="personal-calendar-day${key===todayKey?" today":""}${key===state.calendarSelectedDate?" selected":""}" data-calendar-date="${key}"><span>${day}</span>${events.length?`<b>${events.length}</b><em>${colors.map((color)=>`<i style="background:${esc(color)}"></i>`).join("")}</em>`:""}</button>`);}
+  const selectedEvents=(eventMap.get(state.calendarSelectedDate)||[]).sort((a,b)=>Date.parse(a.startsAt)-Date.parse(b.startsAt));
+  const selectedLabel=new Intl.DateTimeFormat("zh-TW",{timeZone:"Asia/Taipei",month:"long",day:"numeric",weekday:"short"}).format(new Date(`${state.calendarSelectedDate}T12:00:00+08:00`));
+  const eventHtml=selectedEvents.length?selectedEvents.map((event)=>`<article class="personal-calendar-event${event.readonly?" readonly":""}" style="--event-color:${esc(event.color)}"><div class="personal-calendar-event-time"><b>${esc(calendarTimeText(event))}</b><span>${esc(event.labelName)}</span></div><div class="personal-calendar-event-copy"><div><small>${event.sourceType==="company"?`MLM 公司行事曆${event.registeredAt?"・已報名":""}`:event.sourceType==="birthday"?"生日提醒":"私人行程"}</small><h3>${esc(event.title)}</h3></div>${event.contactName?`<p>名片：${esc(event.contactName)}</p>`:""}${event.location?`<p>${esc(event.location)}</p>`:""}${event.reminderMinutes?`<p class="muted">⏰ ${esc(calendarReminderText(event.reminderMinutes))}</p>`:""}${event.description?`<p class="muted">${esc(event.description)}</p>`:""}</div>${event.readonly?"":`<button class="personal-calendar-edit" data-edit-event="${esc(event.id)}">編輯</button>`}</article>`).join(""):`<div class="personal-calendar-no-event">這一天沒有顯示中的行程。</div>`;
+  const labelHtml=state.calendarLabels.map((label)=>`<button class="calendar-label-chip${label.visible?" active":""}" data-label-toggle="${esc(label.id)}" style="--label-color:${esc(label.color)}"><i></i>${esc(label.name)}<span>${label.visible?"顯示":"隱藏"}</span></button>`).join("");
+  const reminderNow=Date.now();
+  const reminders=sessions.filter((event)=>!event.allDay&&event.reminderMinutes&&Date.parse(event.startsAt)>=reminderNow&&Date.parse(event.startsAt)-reminderNow<=Number(event.reminderMinutes)*60000).slice(0,3);
+  const reminderHtml=reminders.length?`<section class="personal-calendar-reminder"><b>即將開始</b>${reminders.map((event)=>`<span>${esc(calendarTimeText(event))}｜${esc(event.title)}</span>`).join("")}</section>`:"";
+  layout(`${reminderHtml}<section class="personal-calendar-labels"><header><div><small>顯示篩選</small><h2>我的行事曆標籤</h2></div><button id="calendarAddLabel" type="button">＋ 自訂標籤</button></header><div>${labelHtml}</div></section><section class="personal-calendar-card"><header class="personal-calendar-toolbar"><button id="calendarPrev" type="button">‹</button><div><small>PERSONAL CALENDAR</small><h2>${year} 年 ${month} 月</h2></div><button id="calendarNext" type="button">›</button></header><div class="personal-calendar-week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="personal-calendar-grid">${cells.join("")}</div><div class="personal-calendar-sync-note"><span>●</span> 本月顯示 ${monthSessions.length} 項行程；公司內容同步自 MLM</div></section><section class="personal-calendar-agenda"><header><div><small>當日行程</small><h2>${esc(selectedLabel)}</h2></div><div><button id="calendarToday" type="button">今天</button><button id="calendarAddEvent" type="button">＋ 行程</button></div></header>${eventHtml}</section>`);
+  document.querySelectorAll("[data-calendar-date]").forEach((button)=>button.onclick=()=>{state.calendarSelectedDate=button.dataset.calendarDate||"";renderPersonalCalendarView();});
+  document.querySelectorAll("[data-label-toggle]").forEach((button)=>button.onclick=async()=>{const label=state.calendarLabels.find((item)=>item.id===button.dataset.labelToggle);if(!label)return;button.disabled=true;try{await setCalendarLabelVisible(label,!label.visible);}catch(error){alert(error.message||"標籤更新失敗");button.disabled=false;}});
+  document.querySelectorAll("[data-edit-event]").forEach((button)=>button.onclick=()=>openCalendarEventDialog(state.calendarSessions.find((event)=>event.id===button.dataset.editEvent)));
+  $("#calendarAddLabel").onclick=createCalendarLabelPrompt;
+  $("#calendarAddEvent").onclick=()=>openCalendarEventDialog();
+  $("#calendarPrev").onclick=()=>{const next=new Date(year,month-2,1);state.calendarMonth=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;state.calendarSelectedDate="";renderPersonalCalendarView();};
+  $("#calendarNext").onclick=()=>{const next=new Date(year,month,1);state.calendarMonth=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;state.calendarSelectedDate="";renderPersonalCalendarView();};
+  $("#calendarToday").onclick=()=>{state.calendarMonth=calendarMonthKey();state.calendarSelectedDate=calendarDateKey(new Date());renderPersonalCalendarView();};
 }
 async function personalCalendar() {
-  state.tab = "calendar";
-  layout(`<section class="card personal-calendar-loading"><h2>同步 MLM 行事曆中…</h2><p class="muted">正在整理活動日期與你的報名狀態。</p></section>`);
+  state.tab="calendar";
+  layout(`<section class="card personal-calendar-loading"><h2>同步個人行事曆中…</h2><p class="muted">正在整合 MLM、私人行程、名片與生日提醒。</p></section>`);
   try {
-    const [all, mine] = await Promise.all([api("/v1/courses"), api("/v1/courses/my")]);
-    state.calendarSessions = Array.isArray(all.sessions) ? all.sessions : [];
-    state.calendarRegisteredIds = new Set((mine.sessions || []).map((session) => String(session.sessionId || "")));
-    state.calendarMonth = state.calendarMonth || calendarMonthKey();
-    state.calendarSelectedDate = state.calendarSelectedDate || calendarDateKey(new Date());
+    const now=new Date(),from=new Date(now.getFullYear()-1,0,1).toISOString(),to=new Date(now.getFullYear()+2,0,1).toISOString();
+    const result=await api(`/v1/personal-calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+    state.calendarSessions=Array.isArray(result.events)?result.events:[];
+    state.calendarLabels=Array.isArray(result.labels)?result.labels:[];
+    state.calendarContacts=Array.isArray(result.contacts)?result.contacts:[];
+    state.calendarMonth=state.calendarMonth||calendarMonthKey();state.calendarSelectedDate=state.calendarSelectedDate||calendarDateKey(new Date());
     renderPersonalCalendarView();
-  } catch (error) {
-    layout(`<section class="card personal-calendar-loading"><h2>行事曆同步失敗</h2><p class="muted">${esc(error.message || "暫時無法讀取 MLM 行事曆")}</p><button class="btn" id="retryPersonalCalendar">重新同步</button></section>`);
-    $("#retryPersonalCalendar").onclick = personalCalendar;
-  }
+  }catch(error){layout(`<section class="card personal-calendar-loading"><h2>行事曆同步失敗</h2><p class="muted">${esc(error.message||"暫時無法讀取行事曆")}</p><button class="btn" id="retryPersonalCalendar">重新同步</button></section>`);$("#retryPersonalCalendar").onclick=personalCalendar;}
 }
-
 const portalMenu = () => `<section class="portal-menu portal-menu-compact" aria-label="會員功能"><button data-home-action="cardCollection"><i class="portal-menu-icon navy">${portalIcon("cardCollection")}</i><span>名片收藏</span></button><button data-home-action="smartMatch"><i class="portal-menu-icon coral">${portalIcon("smartMatch")}</i><span>智能配對</span></button><button data-home-action="aiWear"><i class="portal-menu-icon pink">${portalIcon("aiWear")}</i><span>AI穿戴</span></button><button data-home-action="zodiac"><i class="portal-menu-icon violet">${portalIcon("zodiac")}</i><span>星座運勢</span></button><button data-home-action="calendar"><i class="portal-menu-icon blue">${portalIcon("calendar")}</i><span>個人行事曆</span></button><button data-home-action="home"><i class="portal-menu-icon green">${portalIcon("home")}</i><span>首頁</span></button></section>`;
 function openAiWear(){try{if(window.liff?.isInClient?.()){window.liff.openWindow({url:AI_WEAR_LIFF_URL,external:false});return}}catch{/* Fall back to direct LIFF navigation. */}window.location.href=AI_WEAR_LIFF_URL}
 function openOfficialSite(page="home"){
