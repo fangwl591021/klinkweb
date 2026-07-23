@@ -424,3 +424,23 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
   border-radius:7px;
   object-fit:contain;
 }
+
+
+/* Member profile entry and AI-wear LINE contact field. */
+button.portal-profile{
+  width:100%;
+  margin:0;
+  background:transparent;
+  color:inherit;
+  font:inherit;
+  border-top:0;
+  border-bottom:0;
+  border-left:0;
+}
+.profile-field-hint{
+  display:block;
+  margin:-4px 0 12px;
+  color:#6b7280;
+  font-size:12px;
+  line-height:1.5;
+}
