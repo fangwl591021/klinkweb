@@ -865,7 +865,7 @@ async function home() {
   const syncedPointSnapshot = await mlmMemberPointBalance(wallet.wallet.balance);
   const syncedPointText = syncedPointSnapshot == null ? (mlmPointSyncError ? "同步失敗" : "同步中…") : format(syncedPointSnapshot.balance);
   layout(
-    `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>康立智能 K點</span><strong>${syncedPointText}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame klink-mobile-home"><header class="klink-home-hero"><div class="klink-brand"><span>K</span><div><b>康立全球</b><small>K-LINK GLOBAL</small></div></div><p>從健康生活、會員服務到數位工具，開啟你的康立智慧行動入口。</p><a href="${officialLiffUrl("home")}">前往康立官方網站 <span>↗</span></a></header><a class="klink-official-banner" href="${officialLiffUrl("home")}" aria-label="開啟康立官方網站"><img src="https://static.wixstatic.com/media/cbd8fa_dcb55697bcfd4ed9a50beded41e35b9d~mv2.png/v1/fill/w_2016,h_745,al_c,q_90,usm_0.66_1.00_0.01,enc_avif,quality_auto/%E9%87%91%E7%89%8C%E7%8D%8EFB-Banner.png" alt="康立全球金牌獎官方 Banner" loading="lazy"></a><div class="klink-home-grid"><a href="${officialLiffUrl("about")}"><i>01</i><b>走進康立</b><small>認識康立優勢與發展理念</small><span>›</span></a><a href="${officialLiffUrl("news")}"><i>02</i><b>最新訊息</b><small>掌握公告、活動與行事曆</small><span>›</span></a><a href="${officialLiffUrl("products")}"><i>03</i><b>產品總覽</b><small>瀏覽康立產品與計畫內容</small><span>›</span></a><a href="${officialLiffUrl("video")}"><i>04</i><b>影音專區</b><small>觀看品牌、產品與活動影片</small><span>›</span></a></div><section class="klink-home-philosophy"><small>K-LINK CULTURE</small><h2>5S × 3I 經營理念</h2><p>群策群力、與時俱進，透過前瞻策略、完善管理與創新工具，讓每位夥伴都能連結更大的事業舞台。</p><div><span>遠見</span><span>使命</span><span>表揚</span><span>感恩</span><span>歸屬</span></div></section></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的分享 QR 碼</h3><p class="muted">朋友掃描後會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><button class="btn alt" id="copyInvite">分享邀請名片</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
+    `<section class="member-portal"><div class="portal-profile" data-home-action="profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="portal-primary" data-home-action="wallet"><span class="portal-icon">▣</span><div><span>康立智能 K點</span><strong>${syncedPointText}</strong></div></div><div class="portal-primary" data-home-action="share"><span class="portal-icon">▦</span><div><span>專屬 QR</span><strong>分享</strong></div></div></section>${portalMenu()}<section class="site-home-frame klink-mobile-home"><header class="klink-home-hero"><div class="klink-brand"><span>K</span><div><b>康立全球</b><small>K-LINK GLOBAL</small></div></div><p>從健康生活、會員服務到數位工具，開啟你的康立智慧行動入口。</p><a href="${officialLiffUrl("home")}">前往康立官方網站 <span>↗</span></a></header><a class="klink-official-banner" href="${officialLiffUrl("home")}" aria-label="開啟康立官方網站"><img src="https://static.wixstatic.com/media/cbd8fa_dcb55697bcfd4ed9a50beded41e35b9d~mv2.png/v1/fill/w_2016,h_745,al_c,q_90,usm_0.66_1.00_0.01,enc_avif,quality_auto/%E9%87%91%E7%89%8C%E7%8D%8EFB-Banner.png" alt="康立全球金牌獎官方 Banner" loading="lazy"></a><div class="klink-home-grid"><a href="${officialLiffUrl("about")}"><i>01</i><b>走進康立</b><small>認識康立優勢與發展理念</small><span>›</span></a><a href="${officialLiffUrl("news")}"><i>02</i><b>最新訊息</b><small>掌握公告、活動與行事曆</small><span>›</span></a><a href="${officialLiffUrl("products")}"><i>03</i><b>產品總覽</b><small>瀏覽康立產品與計畫內容</small><span>›</span></a><a href="${officialLiffUrl("video")}"><i>04</i><b>影音專區</b><small>觀看品牌、產品與活動影片</small><span>›</span></a></div><section class="klink-home-philosophy"><small>K-LINK CULTURE</small><h2>5S × 3I 經營理念</h2><p>群策群力、與時俱進，透過前瞻策略、完善管理與創新工具，讓每位夥伴都能連結更大的事業舞台。</p><div><span>遠見</span><span>使命</span><span>表揚</span><span>感恩</span><span>歸屬</span></div></section></section><section id="sharePanel" class="card qr-card quick-panel hidden"><h3>我的推薦網址 QR 碼</h3><p class="muted">朋友掃描或開啟網址後，會帶入你的系統推薦關係。</p><div id="shareQr" class="qr"></div><p id="shareInviteUrl" class="share-invite-url" aria-label="推薦網址"></p><button class="btn alt" id="copyInvite">分享推薦網址</button></section><section id="walletPanel" class="card qr-card quick-panel hidden"><h3>我的點數錢包 QR 碼</h3><p class="muted">供現場人員掃描識別；每次產生後 60 秒失效。</p><div id="homeWalletQr" class="qr"></div><p id="homeWalletExpire" class="muted small"></p></section>`,
   );
 }
 async function invite() {
@@ -880,6 +880,7 @@ async function showShareQr() {
     $("#shareQr").innerHTML = "";
     new QRCode($("#shareQr"), { text: r.invite.url, width: 210, height: 210 });
     $("#shareQr").dataset.url = r.invite.url;
+    $("#shareInviteUrl").textContent = r.invite.url;
     panel?.scrollIntoView({ behavior:"smooth", block:"start" });
   } catch (error) {
     alert(error.message || "分享 QR 碼產生失敗");
@@ -888,22 +889,26 @@ async function showShareQr() {
 async function copyInvite() {
   try {
     const url = $("#shareQr").dataset.url || (await invite()).invite.url;
+    const shareText = `康立智能推薦網址\n${url}`;
     await initLiffOnce();
     if (!liff.isLoggedIn()) {
       markLiffLoginPending();
       liff.login({ redirectUri:liffLoginRedirectUrl() });
       return;
     }
-    if (!liff.isApiAvailable?.("shareTargetPicker")) throw new Error("此 LIFF 尚未啟用分享名片功能");
-    const result = await api("/v1/cards/me");
-    if (!result.card) throw new Error("請先到「我的名片」建立名片，再分享邀請");
-    const flex = cardFlex(result.card);
-    const joinButton = { type:"button", style:"primary", height:"sm", color:"#B96072", action:{ type:"uri", label:"立即加入康立", uri:url } };
-    flex.footer = { type:"box", layout:"vertical", spacing:"sm", contents:[joinButton, ...(flex.footer?.contents || [])].slice(0,4) };
-    const shared = await liff.shareTargetPicker([{ type:"flex", altText:`康立邀請名片｜${String(result.card.displayName || state.member?.displayName || "K-LINK 康立").slice(0,100)}`, contents:flex }]);
-    if (shared !== false) alert("邀請名片已分享");
+    if (liff.isApiAvailable?.("shareTargetPicker")) {
+      const shared = await liff.shareTargetPicker([{ type:"text", text:shareText }]);
+      if (shared !== false) alert("推薦網址已分享");
+      return;
+    }
+    if (navigator.share) {
+      await navigator.share({ title:"康立智能推薦網址", text:"邀請你加入康立智能", url });
+      return;
+    }
+    await navigator.clipboard.writeText(url);
+    alert("推薦網址已複製");
   } catch (error) {
-    if (!/cancel/i.test(String(error?.message || ""))) alert(error.message || "邀請名片分享失敗");
+    if (!/cancel|abort/i.test(String(error?.message || ""))) alert(error.message || "推薦網址分享失敗");
   }
 }
 async function showWalletQr(qrId, expiryId) {
