@@ -15,6 +15,7 @@ function profileFromRow(row) {
     birthday: row.birthday || '',
     memberNumber: row.member_number || '',
     companyMemberNumber: row.company_member_number || '',
+    lineUrl: row.line_url || '',
     profileCompletedAt: row.profile_completed_at || '',
     systemReferrer: row.referrer_user_id ? {
       userId: row.referrer_user_id,
@@ -26,7 +27,7 @@ function profileFromRow(row) {
 }
 
 const memberFields = `
-  mp.display_name, mp.picture_url, mp.phone, mp.email, mp.gender, mp.birthday, mp.member_number, mp.company_member_number, mp.profile_completed_at,
+  mp.display_name, mp.picture_url, mp.phone, mp.email, mp.gender, mp.birthday, mp.member_number, mp.company_member_number, mp.line_url, mp.profile_completed_at,
   rr.referrer_user_id, ref_mp.display_name AS referrer_name, ref_mp.member_number AS referrer_member_number
 `;
 
@@ -120,16 +121,20 @@ export async function updateMemberProfile(db, userId, profile) {
   const gender = String(profile.gender || '').trim();
   const birthday = String(profile.birthday || '').trim();
   const companyMemberNumber = String(profile.companyMemberNumber || '').trim().slice(0, 80);
+  const lineUrl = String(profile.lineUrl || '').trim().slice(0, 500);
   if (!displayName) throw new Error('displayName is required');
   if (!['female', 'male', 'other', 'prefer_not_to_say'].includes(gender)) throw new Error('gender is required');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) throw new Error('請選擇生日');
   const parsedBirthday = new Date(`${birthday}T00:00:00Z`);
   if (Number.isNaN(parsedBirthday.getTime()) || parsedBirthday.toISOString().slice(0, 10) !== birthday || parsedBirthday > new Date()) throw new Error('生日日期不正確');
   if (!companyMemberNumber) throw new Error('companyMemberNumber is required');
+  if (lineUrl && !/^https:\/\/(lin\.ee|line\.me|liff\.line\.me)\//i.test(lineUrl)) {
+    throw new Error('LINE 網址格式錯誤，請填 https://lin.ee/... 或 https://line.me/...');
+  }
   await db.prepare(`
-    UPDATE member_profiles SET display_name = ?, phone = ?, gender = ?, birthday = ?, company_member_number = ?, profile_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    UPDATE member_profiles SET display_name = ?, phone = ?, gender = ?, birthday = ?, company_member_number = ?, line_url = ?, profile_completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
     WHERE platform_user_id = ?
-  `).bind(displayName, phone, gender, birthday, companyMemberNumber, userId).run();
+  `).bind(displayName, phone, gender, birthday, companyMemberNumber, lineUrl, userId).run();
   return getMember(db, userId);
 }
 
