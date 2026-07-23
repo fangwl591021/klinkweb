@@ -2,7 +2,7 @@ import { newId } from "./member-repository.js";
 
 const SYSTEM_LABELS = [
   { sourceType: "company", name: "公司", color: "#0b9f57", sortOrder: 10 },
-  { sourceType: "personal", name: "個人", color: "#b65d79", sortOrder: 20 },
+  { sourceType: "personal", name: "未分類", color: "#b65d79", sortOrder: 20 },
   { sourceType: "birthday", name: "生日", color: "#d49121", sortOrder: 30 },
 ];
 
@@ -58,13 +58,17 @@ async function ensureSystemLabels(db, userId) {
       VALUES (?, ?, ?, ?, ?, 1, 1, ?)`)
       .bind(newId("cal_label"), userId, label.sourceType, label.name, label.color, label.sortOrder).run();
   }
+  await db.prepare(`UPDATE personal_calendar_labels SET name='未分類', updated_at=CURRENT_TIMESTAMP
+    WHERE platform_user_id=? AND source_type='personal' AND is_system=1 AND name='個人'
+      AND NOT EXISTS (SELECT 1 FROM personal_calendar_labels WHERE platform_user_id=? AND name='未分類')`)
+    .bind(userId, userId).run();
 }
 
 function mapLabel(row) {
   return {
     id: row.id,
     sourceType: row.source_type,
-    name: row.name,
+    name: row.source_type === "personal" ? "未分類" : row.name,
     color: row.color,
     visible: Boolean(row.is_visible),
     system: Boolean(row.is_system),
@@ -77,7 +81,7 @@ function mapPrivateEvent(row) {
     id: row.id,
     sourceType: row.source_type || "personal",
     labelId: row.label_id,
-    labelName: row.label_name || "個人",
+    labelName: row.source_type === "personal" ? "未分類" : (row.label_name || "未分類"),
     color: row.label_color || "#b65d79",
     title: row.title,
     description: row.description || "",
@@ -277,7 +281,7 @@ export async function savePersonalCalendarEvent(db, userId, body, eventId = "") 
     if (!contact) throw new Error("關聯名片不存在");
   }
   const existing = eventId ? await db.prepare("SELECT id FROM personal_calendar_events WHERE id=? AND platform_user_id=? AND status='active'").bind(id, userId).first() : null;
-  if (eventId && !existing) throw new Error("找不到私人行程");
+  if (eventId && !existing) throw new Error("找不到行程");
   if (existing) {
     await db.prepare(`UPDATE personal_calendar_events SET label_id=?, contact_card_id=?, title=?, description=?, location=?,
       starts_at=?, ends_at=?, all_day=?, reminder_minutes=?, recurrence=?, updated_at=CURRENT_TIMESTAMP
@@ -296,6 +300,6 @@ export async function savePersonalCalendarEvent(db, userId, body, eventId = "") 
 export async function deletePersonalCalendarEvent(db, userId, eventId) {
   await ensurePersonalCalendarSchema(db);
   const result = await db.prepare("UPDATE personal_calendar_events SET status='deleted', updated_at=CURRENT_TIMESTAMP WHERE id=? AND platform_user_id=? AND status='active'").bind(eventId, userId).run();
-  if (!Number(result.meta?.changes || 0)) throw new Error("找不到私人行程");
+  if (!Number(result.meta?.changes || 0)) throw new Error("找不到行程");
   return true;
 }
