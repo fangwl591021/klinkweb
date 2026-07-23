@@ -329,3 +329,14 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
 .calendar-voice-input>button.is-listening{border-color:#db718c;background:#fff0f4;color:#a72f51}
 .calendar-voice-input>button:disabled{cursor:not-allowed;opacity:.6}
 @media(max-width:480px){.calendar-voice-input{align-items:stretch;flex-direction:column}.calendar-voice-input>button{width:100%}}
+
+
+/* Prevent iOS LIFF from permanently zooming the page after form dictation/input. */
+@media(max-width:768px){
+  .personal-calendar-form input,
+  .personal-calendar-form select,
+  .personal-calendar-form textarea{
+    font-size:16px;
+    line-height:1.4;
+  }
+}
