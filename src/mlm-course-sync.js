@@ -62,10 +62,15 @@ export function normalizeMlmCourseEvent(event) {
 export async function syncMlmCourses(env, fetchImpl = fetch) {
   if (!env?.DB) throw new Error('DB is not configured');
   const endpoint = text(env.MLM_COURSES_URL) || DEFAULT_SOURCE_URL;
-  const response = await fetchImpl(endpoint, {
-    headers: { accept: 'application/json' },
-    cf: { cacheTtl: 60, cacheEverything: true },
-  });
+  const hasServiceBinding = env.MLM_WORKER && typeof env.MLM_WORKER.fetch === 'function';
+  const response = hasServiceBinding
+    ? await env.MLM_WORKER.fetch('https://mlm.internal/api/public/klink-courses', {
+        headers: { accept: 'application/json' },
+      })
+    : await fetchImpl(endpoint, {
+        headers: { accept: 'application/json' },
+        cf: { cacheTtl: 60, cacheEverything: true },
+      });
   if (!response.ok) throw new Error(`MLM course feed returned ${response.status}`);
   const payload = await response.json();
   if (payload?.status !== 'success' || !Array.isArray(payload.courses)) {
