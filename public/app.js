@@ -697,8 +697,14 @@ function openCalendarEventDialog(event = null) {
   const voiceStatus = dialog.querySelector("[data-calendar-voice-status]");
   const titleInput = dialog.querySelector(`[name="title"]`);
   if (!browserCalendarSpeechRecognition()) {
-    voiceButton.disabled = true;
-    voiceStatus.textContent = "此瀏覽器不支援內建語音辨識，仍可手動輸入。";
+    voiceButton.disabled = false;
+    voiceButton.textContent = "⌨ 使用鍵盤語音";
+    voiceStatus.textContent = "LINE 瀏覽器不支援直接辨識；點擊後再按手機鍵盤的麥克風。";
+    voiceButton.onclick = () => {
+      titleInput.focus();
+      titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
+      voiceStatus.textContent = "請按手機鍵盤上的 🎙 麥克風開始語音輸入。";
+    };
   } else {
     voiceButton.onclick = () => startBrowserCalendarSpeech(voiceButton, titleInput, voiceStatus);
   }
