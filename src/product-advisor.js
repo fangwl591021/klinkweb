@@ -16,6 +16,26 @@ export function communicationQuadrant(profileContext = "") {
   return scores[0]?.score > 0 ? scores[0].quadrant : "Q4";
 }
 
+function sanitizeProduct(product = {}) {
+  const pending = product.reviewStatus === "pending_review";
+  return {
+    ...product,
+    productName: product.productName || product.name || "",
+    name: product.name || product.productName || "",
+    productSeries: product.productSeries || product.plan || "",
+    plan: product.plan || product.productSeries || "",
+    officialIntroduction: product.officialIntroduction || product.facts || "",
+    approvedPublicFacts: Array.isArray(product.approvedPublicFacts) ? product.approvedPublicFacts : (product.facts ? [product.facts] : []),
+    specifications: pending ? [] : (Array.isArray(product.specifications) ? product.specifications : []),
+    size: pending ? "" : String(product.size || ""),
+    ingredients: pending ? "" : String(product.ingredients || ""),
+    usage: pending ? "" : String(product.usage || ""),
+    safetyTags: Array.isArray(product.safetyTags) ? product.safetyTags : [],
+    prohibitedClaims: Array.isArray(product.prohibitedClaims) ? product.prohibitedClaims : [],
+    matchingKeywords: Array.isArray(product.matchingKeywords) ? product.matchingKeywords : [],
+  };
+}
+
 export async function askMlmProductAdvisor(provider, {
   query = "",
   profileContext = "",
@@ -36,12 +56,14 @@ export async function askMlmProductAdvisor(provider, {
   }
   return {
     blocked: Boolean(result.blocked),
+    needsClarification: Boolean(result.needsClarification),
+    clarificationQuestion: clean(result.clarificationQuestion, 800),
     blockReason: clean(result.blockReason, 60),
     quadrant: clean(result.quadrant, 20) || quadrant,
     quadrantLabel: clean(result.quadrantLabel, 40),
     answer: clean(result.answer, 1800),
     disclaimer: clean(result.disclaimer, 800),
-    products: Array.isArray(result.products) ? result.products.slice(0, 3) : [],
+    products: Array.isArray(result.products) ? result.products.slice(0, 3).map(sanitizeProduct) : [],
     actions: Array.isArray(result.actions) ? result.actions.slice(0, 3) : [],
   };
 }
