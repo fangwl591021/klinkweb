@@ -632,6 +632,55 @@ async function createCalendarLabelPrompt(suggestedName = "") {
   else state.calendarLabels.push(result.label);
   return result.label;
 }
+function browserCalendarSpeechRecognition() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+function startBrowserCalendarSpeech(button, titleInput, status) {
+  const Recognition = browserCalendarSpeechRecognition();
+  if (!Recognition) {
+    status.textContent = "此瀏覽器不支援內建語音辨識，請改用手動輸入。";
+    alert("目前的 LINE／手機瀏覽器不支援免費語音辨識，請改用手動輸入或使用 Chrome 開啟。");
+    return;
+  }
+  const recognition = new Recognition();
+  recognition.lang = "zh-TW";
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  let received = false;
+  recognition.onstart = () => {
+    button.disabled = true;
+    button.classList.add("is-listening");
+    button.textContent = "● 聆聽中…";
+    status.textContent = "請說出行程內容，說完後稍候辨識。";
+  };
+  recognition.onresult = (speechEvent) => {
+    const transcript = Array.from(speechEvent.results).map((result) => result[0]?.transcript || "").join("").trim();
+    if (!transcript) return;
+    received = true;
+    titleInput.value = titleInput.value.trim() ? `${titleInput.value.trim()} ${transcript}` : transcript;
+    titleInput.dispatchEvent(new Event("input", { bubbles:true }));
+    status.textContent = `已輸入：「${transcript}」；可繼續修改後儲存。`;
+  };
+  recognition.onerror = (speechError) => {
+    const messages = {
+      "not-allowed":"麥克風權限未開啟，請允許後再試。",
+      "service-not-allowed":"此瀏覽器不允許使用語音辨識。",
+      "audio-capture":"找不到可使用的麥克風。",
+      "no-speech":"沒有偵測到聲音，請靠近麥克風再試。",
+      "network":"語音辨識服務連線失敗，請檢查網路。"
+    };
+    status.textContent = messages[speechError.error] || "語音辨識失敗，請再試一次。";
+  };
+  recognition.onend = () => {
+    button.disabled = false;
+    button.classList.remove("is-listening");
+    button.textContent = "🎙 開始說話";
+    if (!received && status.textContent.includes("請說出")) status.textContent = "沒有收到語音內容，請再試一次。";
+  };
+  try { recognition.start(); }
+  catch { status.textContent = "麥克風啟動失敗，請稍後再試。"; }
+}
 function openCalendarEventDialog(event = null) {
   const editableLabels = state.calendarLabels.filter((label) => !["company","birthday"].includes(label.sourceType));
   const personalLabel = editableLabels.find((label) => label.sourceType === "personal") || editableLabels[0];
@@ -641,9 +690,18 @@ function openCalendarEventDialog(event = null) {
   const selectedContact = state.calendarContacts.find((contact) => contact.id === event?.contactCardId) || null;
   const dialog = document.createElement("dialog");
   dialog.className = "personal-calendar-dialog";
-  dialog.innerHTML = `<form method="dialog" class="personal-calendar-form"><header><div><small>${event ? "編輯行程" : "新增行程"}</small><h2>${event ? esc(event.title) : "安排新行程"}</h2></div><button type="button" data-close>×</button></header><label>行程名稱<input name="title" maxlength="100" required value="${esc(event?.title || "")}" placeholder="例如：與王先生討論合作"></label><section class="calendar-form-section"><div class="calendar-label-picker"><label>行程分類<select name="labelId">${editableLabels.map((label) => `<option value="${esc(label.id)}" ${label.id === (event?.labelId || personalLabel.id) ? "selected" : ""}>${esc(label.name)}</option>`).join("")}</select></label><button type="button" data-add-calendar-label>＋ 新增標籤</button></div><p>「未分類」是沒有指定標籤時的預設分類；你也可以建立工作、家庭、約訪或學習。公司與生日由系統同步，只用於顯示篩選。</p><div class="calendar-label-suggestions"><button type="button" data-label-suggestion="工作">工作</button><button type="button" data-label-suggestion="家庭">家庭</button><button type="button" data-label-suggestion="約訪">約訪</button><button type="button" data-label-suggestion="學習">學習</button></div></section><section class="calendar-form-section calendar-contact-picker"><label>會面／追蹤對象（選填）<input type="search" data-contact-search autocomplete="off" value="${esc(selectedContact?.displayName || "")}" placeholder="搜尋姓名、公司或職稱"><input type="hidden" name="contactCardId" value="${esc(event?.contactCardId || "")}"></label><p>選擇收藏名片後，行程會記在這位聯絡人的約訪紀錄中；沒有特定對象可留空。</p><div class="calendar-contact-selected" data-contact-selected>${selectedContact ? `<b>${esc(selectedContact.displayName)}</b><span>${esc([selectedContact.companyName,selectedContact.jobTitle].filter(Boolean).join("・"))}</span><button type="button" data-clear-contact>清除</button>` : "尚未選擇對象"}</div><div class="calendar-contact-results" data-contact-results hidden></div></section><div class="personal-calendar-form-grid"><label>開始時間<input name="startsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.startsAt) : defaultStart}"></label><label>結束時間<input name="endsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.endsAt) : defaultEnd}"></label><label>提醒時間<select name="reminderMinutes">${[[0,"不提醒"],[10,"10 分鐘前"],[30,"30 分鐘前"],[60,"1 小時前"],[1440,"1 天前"]].map(([value,label]) => `<option value="${value}" ${Number(event?.reminderMinutes || 0) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>地點<input name="location" maxlength="300" value="${esc(event?.location || "")}"></label></div><label>備註<textarea name="description" maxlength="2000" rows="3">${esc(event?.description || "")}</textarea></label><div class="personal-calendar-form-actions">${event ? `<button type="button" class="danger" data-delete>刪除行程</button>` : ""}<button type="button" class="btn alt" data-close>取消</button><button type="submit" class="btn">儲存行程</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog" class="personal-calendar-form"><header><div><small>${event ? "編輯行程" : "新增行程"}</small><h2>${event ? esc(event.title) : "安排新行程"}</h2></div><button type="button" data-close>×</button></header><section class="calendar-voice-input"><div><b>免費語音輸入</b><span data-calendar-voice-status aria-live="polite">點擊麥克風，把說話內容填入行程名稱。</span></div><button type="button" data-calendar-voice>🎙 開始說話</button></section><label>行程名稱<input name="title" maxlength="100" required value="${esc(event?.title || "")}" placeholder="例如：與王先生討論合作"></label><section class="calendar-form-section"><div class="calendar-label-picker"><label>行程分類<select name="labelId">${editableLabels.map((label) => `<option value="${esc(label.id)}" ${label.id === (event?.labelId || personalLabel.id) ? "selected" : ""}>${esc(label.name)}</option>`).join("")}</select></label><button type="button" data-add-calendar-label>＋ 新增標籤</button></div><p>「未分類」是沒有指定標籤時的預設分類；你也可以建立工作、家庭、約訪或學習。公司與生日由系統同步，只用於顯示篩選。</p><div class="calendar-label-suggestions"><button type="button" data-label-suggestion="工作">工作</button><button type="button" data-label-suggestion="家庭">家庭</button><button type="button" data-label-suggestion="約訪">約訪</button><button type="button" data-label-suggestion="學習">學習</button></div></section><section class="calendar-form-section calendar-contact-picker"><label>會面／追蹤對象（選填）<input type="search" data-contact-search autocomplete="off" value="${esc(selectedContact?.displayName || "")}" placeholder="搜尋姓名、公司或職稱"><input type="hidden" name="contactCardId" value="${esc(event?.contactCardId || "")}"></label><p>選擇收藏名片後，行程會記在這位聯絡人的約訪紀錄中；沒有特定對象可留空。</p><div class="calendar-contact-selected" data-contact-selected>${selectedContact ? `<b>${esc(selectedContact.displayName)}</b><span>${esc([selectedContact.companyName,selectedContact.jobTitle].filter(Boolean).join("・"))}</span><button type="button" data-clear-contact>清除</button>` : "尚未選擇對象"}</div><div class="calendar-contact-results" data-contact-results hidden></div></section><div class="personal-calendar-form-grid"><label>開始時間<input name="startsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.startsAt) : defaultStart}"></label><label>結束時間<input name="endsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.endsAt) : defaultEnd}"></label><label>提醒時間<select name="reminderMinutes">${[[0,"不提醒"],[10,"10 分鐘前"],[30,"30 分鐘前"],[60,"1 小時前"],[1440,"1 天前"]].map(([value,label]) => `<option value="${value}" ${Number(event?.reminderMinutes || 0) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>地點<input name="location" maxlength="300" value="${esc(event?.location || "")}"></label></div><label>備註<textarea name="description" maxlength="2000" rows="3">${esc(event?.description || "")}</textarea></label><div class="personal-calendar-form-actions">${event ? `<button type="button" class="danger" data-delete>刪除行程</button>` : ""}<button type="button" class="btn alt" data-close>取消</button><button type="submit" class="btn">儲存行程</button></div></form>`;
   document.body.append(dialog);
   const labelSelect = dialog.querySelector(`[name="labelId"]`);
+  const voiceButton = dialog.querySelector("[data-calendar-voice]");
+  const voiceStatus = dialog.querySelector("[data-calendar-voice-status]");
+  const titleInput = dialog.querySelector(`[name="title"]`);
+  if (!browserCalendarSpeechRecognition()) {
+    voiceButton.disabled = true;
+    voiceStatus.textContent = "此瀏覽器不支援內建語音辨識，仍可手動輸入。";
+  } else {
+    voiceButton.onclick = () => startBrowserCalendarSpeech(voiceButton, titleInput, voiceStatus);
+  }
   const addLabel = async (suggested = "") => {
     try { const label = await createCalendarLabelPrompt(suggested); if (!label) return; let option=[...labelSelect.options].find((item)=>item.value===label.id); if(!option){option=document.createElement("option");option.value=label.id;labelSelect.append(option);} option.textContent=label.name; option.selected=true; }
     catch (error) { alert(error.message || "標籤建立失敗"); }
