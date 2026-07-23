@@ -4,6 +4,36 @@ export function newId(prefix) {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`;
 }
 
+const MEMBER_NUMBER_DIGITS = '012356789';
+const MEMBER_NUMBER_WIDTH = 8;
+const MEMBER_NUMBER_LIMIT = (MEMBER_NUMBER_DIGITS.length ** MEMBER_NUMBER_WIDTH) - 1;
+
+export function formatMemberNumber(sequence) {
+  let value = Number(sequence);
+  if (!Number.isSafeInteger(value) || value < 1 || value > MEMBER_NUMBER_LIMIT) {
+    throw new Error('System member number sequence is out of range');
+  }
+
+  let encoded = '';
+  do {
+    encoded = MEMBER_NUMBER_DIGITS[value % MEMBER_NUMBER_DIGITS.length] + encoded;
+    value = Math.floor(value / MEMBER_NUMBER_DIGITS.length);
+  } while (value > 0);
+
+  return `MB-${encoded.padStart(MEMBER_NUMBER_WIDTH, '0')}`;
+}
+
+async function reserveMemberNumber(db) {
+  const row = await db.prepare(`
+    UPDATE member_number_sequences
+    SET next_value = next_value + 1, updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1
+    RETURNING next_value - 1 AS sequence
+  `).first();
+  if (!row?.sequence) throw new Error('System member number sequence is not initialized');
+  return formatMemberNumber(row.sequence);
+}
+
 function profileFromRow(row) {
   return row && {
     userId: row.user_id,
@@ -70,12 +100,13 @@ export async function resolveLineMember(db, lineProfile, inviteToken = '') {
   const displayName = String(lineProfile.name || '').slice(0, 120);
   const pictureUrl = String(lineProfile.picture || '').slice(0, 2048);
   const email = String(lineProfile.email || '').slice(0, 320);
+  const memberNumber = await reserveMemberNumber(db);
   const statements = [
     db.prepare('INSERT INTO platform_users (id) VALUES (?)').bind(userId),
     db.prepare('INSERT INTO external_identities (id, platform_user_id, provider, provider_subject) VALUES (?, ?, ?, ?)')
       .bind(identityId, userId, 'line_login', lineProfile.sub),
     db.prepare('INSERT INTO member_profiles (platform_user_id, display_name, picture_url, email, member_number) VALUES (?, ?, ?, ?, ?)')
-      .bind(userId, displayName, pictureUrl, email, `MB-${userId.slice(-8).toUpperCase()}`),
+      .bind(userId, displayName, pictureUrl, email, memberNumber),
     db.prepare('INSERT INTO audit_logs (id, subject_user_id, action, metadata_json) VALUES (?, ?, ?, ?)')
       .bind(newId('audit'), userId, 'member.registered', JSON.stringify({ provider: 'line_login' }))
   ];
@@ -87,7 +118,7 @@ export async function resolveLineMember(db, lineProfile, inviteToken = '') {
       .bind(newId('audit'), userId, 'referral.confirmed', JSON.stringify({ inviteLinkId: referral.inviteLinkId }))
   );
   await db.batch(statements);
-  return { member: { userId, displayName, pictureUrl, phone: '', email, gender: '', birthday: '', memberNumber: `MB-${userId.slice(-8).toUpperCase()}`, companyMemberNumber: '', profileCompletedAt: '', systemReferrer: referral ? { userId: referral.inviterUserId, displayName: '', memberNumber: '' } : null, status: 'active' }, created: true, referralCreated: Boolean(referral) };
+  return { member: { userId, displayName, pictureUrl, phone: '', email, gender: '', birthday: '', memberNumber, companyMemberNumber: '', lineUrl: '', profileCompletedAt: '', systemReferrer: referral ? { userId: referral.inviterUserId, displayName: '', memberNumber: '' } : null, status: 'active' }, created: true, referralCreated: Boolean(referral) };
 }
 
 async function resolveInvite(db, inviteToken, referredUserId) {
