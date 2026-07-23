@@ -176,6 +176,7 @@ async function companyEvents(db, label, from, to, userId) {
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
     LEFT JOIN course_registrations cr ON cr.course_session_id = cs.id AND cr.platform_user_id = ? AND cr.status = 'registered'
     WHERE c.status = 'published' AND cs.status = 'scheduled'
+      AND substr(cs.id, 1, 4) = 'mlm_'
       AND cs.starts_at < ? AND cs.ends_at >= ?
     ORDER BY cs.starts_at
   `).bind(userId, to, from).all();
