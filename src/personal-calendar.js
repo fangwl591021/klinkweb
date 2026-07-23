@@ -146,15 +146,16 @@ async function birthdayEvents(db, userId, label, from, to) {
   return events;
 }
 
-async function companyEvents(db, label, from, to) {
+async function companyEvents(db, label, from, to, userId) {
   const result = await db.prepare(`
     SELECT cs.id, cs.title, cs.starts_at, cs.ends_at, cs.attendance_mode,
-      cs.venue_name, cs.venue_address, cs.meeting_url, c.description
+      cs.venue_name, cs.venue_address, cs.meeting_url, c.description, cr.registered_at
     FROM course_sessions cs JOIN courses c ON c.id = cs.course_id
+    LEFT JOIN course_registrations cr ON cr.course_session_id = cs.id AND cr.platform_user_id = ? AND cr.status = 'registered'
     WHERE c.status = 'published' AND cs.status = 'scheduled'
       AND cs.starts_at < ? AND cs.ends_at >= ?
     ORDER BY cs.starts_at
-  `).bind(to, from).all();
+  `).bind(userId, to, from).all();
   return (result.results || []).map((row) => ({
     id: row.id,
     sourceType: "company",
@@ -172,6 +173,7 @@ async function companyEvents(db, label, from, to) {
     contactCardId: "",
     contactName: "",
     readonly: true,
+    registeredAt: row.registered_at || "",
   }));
 }
 
@@ -200,7 +202,7 @@ export async function listPersonalCalendar(db, userId, { from, to }) {
   const companyLabel = labels.find((label) => label.sourceType === "company");
   const birthdayLabel = labels.find((label) => label.sourceType === "birthday");
   const events = (privateRows.results || []).map(mapPrivateEvent);
-  if (companyLabel) events.push(...await companyEvents(db, companyLabel, start, end));
+  if (companyLabel) events.push(...await companyEvents(db, companyLabel, start, end, userId));
   if (birthdayLabel) events.push(...await birthdayEvents(db, userId, birthdayLabel, start, end));
   events.sort((a, b) => Date.parse(a.startsAt) - Date.parse(b.startsAt));
   return {
