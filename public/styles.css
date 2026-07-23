@@ -290,3 +290,24 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
 .personal-calendar-form-actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:4px}
 .personal-calendar-form-actions .danger{border:1px solid #f4c5cd;border-radius:8px;background:#fff1f3;color:#b4233b;font-weight:850;cursor:pointer}
 @media(max-width:480px){.personal-calendar-form-grid{grid-template-columns:1fr}.personal-calendar-form-actions{grid-template-columns:1fr}.personal-calendar-event-copy{padding-right:42px}}
+
+
+/* Calendar editor clarity and scalable contact picker. */
+.calendar-form-section{display:grid;gap:8px;padding:12px;border:1px solid #e7ebf1;border-radius:13px;background:#fafbfd}
+.calendar-form-section>p{margin:0;color:#748196;font-size:11px;line-height:1.55}
+.calendar-label-picker{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end}
+.calendar-label-picker>button{height:42px;border:1px solid #cfe5d7;border-radius:10px;background:#effaf3;color:#08783b;padding:0 11px;font-weight:850;cursor:pointer}
+.calendar-label-suggestions{display:flex;gap:6px;overflow-x:auto}
+.calendar-label-suggestions button{flex:0 0 auto;border:1px solid #e6dbe0;border-radius:999px;background:#fff;color:#92566a;padding:6px 10px;font-size:11px;font-weight:800;cursor:pointer}
+.calendar-contact-picker{position:relative}
+.calendar-contact-selected{display:flex;align-items:center;gap:7px;min-height:40px;padding:9px 10px;border-radius:10px;background:#fff;color:#7a8797;font-size:12px}
+.calendar-contact-selected b{color:#24364c}
+.calendar-contact-selected span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.calendar-contact-selected button{margin-left:auto;border:0;background:transparent;color:#b4233b;font-weight:800;cursor:pointer}
+.calendar-contact-results{position:absolute;z-index:5;left:12px;right:12px;top:88px;max-height:260px;overflow:auto;border:1px solid #dce3ec;border-radius:12px;background:#fff;box-shadow:0 12px 28px #17203326;padding:6px}
+.calendar-contact-results button{display:grid;width:100%;gap:3px;border:0;border-bottom:1px solid #eef1f5;background:#fff;padding:10px;text-align:left;cursor:pointer}
+.calendar-contact-results button:hover{background:#f5fbf7}
+.calendar-contact-results button:last-child{border-bottom:0}
+.calendar-contact-results b{color:#24364c}
+.calendar-contact-results span,.calendar-contact-results p{margin:0;color:#7a8797;font-size:11px}
+@media(max-width:480px){.calendar-label-picker{grid-template-columns:1fr}.calendar-label-picker>button{width:100%}.calendar-contact-results{top:105px}}
