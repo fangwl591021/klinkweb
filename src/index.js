@@ -88,6 +88,14 @@ import {
   queueSystemMemberCrmInsightBackfill,
 } from "./member-crm-insights.js";
 import { syncMlmCourses } from "./mlm-course-sync.js";
+import {
+  createCalendarLabel,
+  deleteCalendarLabel,
+  deletePersonalCalendarEvent,
+  listPersonalCalendar,
+  savePersonalCalendarEvent,
+  updateCalendarLabel,
+} from "./personal-calendar.js";
 import { buildMatchingCandidates, matchContacts } from "./smart-matching.js";
 import {
   findCachedSmartMatch,
@@ -708,6 +716,60 @@ async function app(request, env, ctx) {
     } catch (error) {
       return badRequest(error.message || "Unable to save card");
     }
+  }
+
+  if (url.pathname === "/v1/personal-calendar" && request.method === "GET") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { await syncMlmCourses(env); } catch (error) { console.error("MLM calendar sync failed", error); }
+    const now = new Date();
+    const from = url.searchParams.get("from") || new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString();
+    const to = url.searchParams.get("to") || new Date(now.getFullYear(), now.getMonth() + 18, 1).toISOString();
+    try {
+      return json({ success: true, ...(await listPersonalCalendar(env.DB, member.userId, { from, to })) });
+    } catch (error) {
+      return json({ success: false, error: error.message || "個人行事曆讀取失敗" }, 400);
+    }
+  }
+
+  if (url.pathname === "/v1/personal-calendar/events" && request.method === "POST") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { return json({ success: true, event: await savePersonalCalendarEvent(env.DB, member.userId, (await readJson(request)) || {}) }); }
+    catch (error) { return json({ success: false, error: error.message || "私人行程儲存失敗" }, 400); }
+  }
+  const personalEventMatch = url.pathname.match(/^\/v1\/personal-calendar\/events\/([^/]+)$/);
+  if (personalEventMatch && request.method === "PATCH") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { return json({ success: true, event: await savePersonalCalendarEvent(env.DB, member.userId, (await readJson(request)) || {}, decodeURIComponent(personalEventMatch[1])) }); }
+    catch (error) { return json({ success: false, error: error.message || "私人行程更新失敗" }, 400); }
+  }
+  if (personalEventMatch && request.method === "DELETE") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { await deletePersonalCalendarEvent(env.DB, member.userId, decodeURIComponent(personalEventMatch[1])); return json({ success: true }); }
+    catch (error) { return json({ success: false, error: error.message || "私人行程刪除失敗" }, 400); }
+  }
+
+  if (url.pathname === "/v1/personal-calendar/labels" && request.method === "POST") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { return json({ success: true, label: await createCalendarLabel(env.DB, member.userId, (await readJson(request)) || {}) }); }
+    catch (error) { return json({ success: false, error: error.message || "標籤建立失敗" }, 400); }
+  }
+  const personalLabelMatch = url.pathname.match(/^\/v1\/personal-calendar\/labels\/([^/]+)$/);
+  if (personalLabelMatch && request.method === "PATCH") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { return json({ success: true, label: await updateCalendarLabel(env.DB, member.userId, decodeURIComponent(personalLabelMatch[1]), (await readJson(request)) || {}) }); }
+    catch (error) { return json({ success: false, error: error.message || "標籤更新失敗" }, 400); }
+  }
+  if (personalLabelMatch && request.method === "DELETE") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try { await deleteCalendarLabel(env.DB, member.userId, decodeURIComponent(personalLabelMatch[1])); return json({ success: true }); }
+    catch (error) { return json({ success: false, error: error.message || "標籤刪除失敗" }, 400); }
   }
 
   if (request.method === "POST" && url.pathname === "/v1/admin/calendar/upload-image") {
