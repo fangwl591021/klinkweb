@@ -738,7 +738,10 @@ function openCalendarEventDialog(event = null) {
   contactSearch.addEventListener("focus",searchContacts);contactSearch.addEventListener("input",()=>{contactId.value="";searchContacts();});
   contactSelected.querySelector("[data-clear-contact]")?.addEventListener("click",()=>selectContact(null));
   dialog.querySelectorAll("[data-close]").forEach((button) => button.onclick = () => dialog.close());
-  dialog.addEventListener("close", () => dialog.remove());
+  dialog.addEventListener("close", () => {
+    if (dialog.contains(document.activeElement)) document.activeElement?.blur?.();
+    dialog.remove();
+  });
   dialog.querySelector("form").onsubmit = async (submitEvent) => {
     submitEvent.preventDefault();
     const form = new FormData(submitEvent.currentTarget);
