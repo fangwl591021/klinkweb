@@ -635,11 +635,29 @@ async function createCalendarLabelPrompt(suggestedName = "") {
 function browserCalendarSpeechRecognition() {
   return window.SpeechRecognition || window.webkitSpeechRecognition || null;
 }
+function isLineLiffBrowser() {
+  try {
+    if (window.liff?.isInClient?.()) return true;
+  } catch {}
+  return /\bLine\//i.test(navigator.userAgent || "");
+}
+function useCalendarKeyboardDictation(button, titleInput, status, reason = "") {
+  button.disabled = false;
+  button.classList.remove("is-listening");
+  button.textContent = "⌨ 使用鍵盤語音";
+  status.textContent = reason || "點擊後，再按手機鍵盤上的麥克風進行免費語音輸入。";
+  button.onclick = () => {
+    titleInput.scrollIntoView({ behavior:"smooth", block:"center" });
+    titleInput.focus({ preventScroll:true });
+    titleInput.click();
+    titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
+    status.textContent = "鍵盤已開啟，請按鍵盤上的 🎙 麥克風；若沒有麥克風，請先啟用手機聽寫功能。";
+  };
+}
 function startBrowserCalendarSpeech(button, titleInput, status) {
   const Recognition = browserCalendarSpeechRecognition();
   if (!Recognition) {
-    status.textContent = "此瀏覽器不支援內建語音辨識，請改用手動輸入。";
-    alert("目前的 LINE／手機瀏覽器不支援免費語音辨識，請改用手動輸入或使用 Chrome 開啟。");
+    useCalendarKeyboardDictation(button, titleInput, status, "此瀏覽器不支援直接辨識，請改用手機鍵盤語音。");
     return;
   }
   const recognition = new Recognition();
@@ -648,6 +666,7 @@ function startBrowserCalendarSpeech(button, titleInput, status) {
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
   let received = false;
+  let switchedToKeyboard = false;
   recognition.onstart = () => {
     button.disabled = true;
     button.classList.add("is-listening");
@@ -663,9 +682,12 @@ function startBrowserCalendarSpeech(button, titleInput, status) {
     status.textContent = `已輸入：「${transcript}」；可繼續修改後儲存。`;
   };
   recognition.onerror = (speechError) => {
+    if (["not-allowed","service-not-allowed"].includes(speechError.error)) {
+      switchedToKeyboard = true;
+      useCalendarKeyboardDictation(button, titleInput, status, "LINE 瀏覽器禁止直接語音辨識，請改用手機鍵盤語音。");
+      return;
+    }
     const messages = {
-      "not-allowed":"麥克風權限未開啟，請允許後再試。",
-      "service-not-allowed":"此瀏覽器不允許使用語音辨識。",
       "audio-capture":"找不到可使用的麥克風。",
       "no-speech":"沒有偵測到聲音，請靠近麥克風再試。",
       "network":"語音辨識服務連線失敗，請檢查網路。"
@@ -673,13 +695,16 @@ function startBrowserCalendarSpeech(button, titleInput, status) {
     status.textContent = messages[speechError.error] || "語音辨識失敗，請再試一次。";
   };
   recognition.onend = () => {
+    if (switchedToKeyboard) return;
     button.disabled = false;
     button.classList.remove("is-listening");
     button.textContent = "🎙 開始說話";
     if (!received && status.textContent.includes("請說出")) status.textContent = "沒有收到語音內容，請再試一次。";
   };
   try { recognition.start(); }
-  catch { status.textContent = "麥克風啟動失敗，請稍後再試。"; }
+  catch {
+    useCalendarKeyboardDictation(button, titleInput, status, "直接語音辨識無法啟動，請改用手機鍵盤語音。");
+  }
 }
 function openCalendarEventDialog(event = null) {
   const editableLabels = state.calendarLabels.filter((label) => !["company","birthday"].includes(label.sourceType));
@@ -696,15 +721,8 @@ function openCalendarEventDialog(event = null) {
   const voiceButton = dialog.querySelector("[data-calendar-voice]");
   const voiceStatus = dialog.querySelector("[data-calendar-voice-status]");
   const titleInput = dialog.querySelector(`[name="title"]`);
-  if (!browserCalendarSpeechRecognition()) {
-    voiceButton.disabled = false;
-    voiceButton.textContent = "⌨ 使用鍵盤語音";
-    voiceStatus.textContent = "LINE 瀏覽器不支援直接辨識；點擊後再按手機鍵盤的麥克風。";
-    voiceButton.onclick = () => {
-      titleInput.focus();
-      titleInput.setSelectionRange(titleInput.value.length, titleInput.value.length);
-      voiceStatus.textContent = "請按手機鍵盤上的 🎙 麥克風開始語音輸入。";
-    };
+  if (isLineLiffBrowser() || !browserCalendarSpeechRecognition()) {
+    useCalendarKeyboardDictation(voiceButton, titleInput, voiceStatus, "LINE LIFF 請使用手機鍵盤的免費語音輸入。");
   } else {
     voiceButton.onclick = () => startBrowserCalendarSpeech(voiceButton, titleInput, voiceStatus);
   }
