@@ -617,24 +617,39 @@ async function setCalendarLabelVisible(label, visible) {
   label.visible = visible;
   renderPersonalCalendarView();
 }
-async function createCalendarLabelPrompt() {
-  const name = prompt("自訂標籤名稱（最多 20 字）");
-  if (!name?.trim()) return;
-  const color = prompt("標籤顏色（例如 #52637d）", "#52637d") || "#52637d";
-  try { await api("/v1/personal-calendar/labels", { method:"POST", body:JSON.stringify({ name:name.trim(), color }) }); await reloadPersonalCalendar(); }
-  catch (error) { alert(error.message || "標籤建立失敗"); }
+async function createCalendarLabelPrompt(suggestedName = "") {
+  const initial = typeof suggestedName === "string" ? suggestedName : "";
+  const name = prompt("建立行事曆標籤，例如：工作、家庭、約訪、學習", initial);
+  if (!name?.trim()) return null;
+  const suggestedColors = { "工作":"#345bdb", "家庭":"#d49121", "約訪":"#b65d79", "學習":"#8246ee" };
+  const color = prompt("標籤顏色（HEX 色碼）", suggestedColors[name.trim()] || "#52637d") || "#52637d";
+  const result = await api("/v1/personal-calendar/labels", { method:"POST", body:JSON.stringify({ name:name.trim(), color }) });
+  if (result.label) state.calendarLabels.push(result.label);
+  return result.label || null;
 }
 function openCalendarEventDialog(event = null) {
   const editableLabels = state.calendarLabels.filter((label) => !["company","birthday"].includes(label.sourceType));
   const personalLabel = editableLabels.find((label) => label.sourceType === "personal") || editableLabels[0];
-  if (!personalLabel) return alert("目前沒有可用的個人標籤");
+  if (!personalLabel) return alert("目前沒有可用的私人行程標籤");
   const selectedDate = state.calendarSelectedDate || calendarDateKey(new Date());
-  const defaultStart = `${selectedDate}T09:00`;
-  const defaultEnd = `${selectedDate}T10:00`;
+  const defaultStart = `${selectedDate}T09:00`, defaultEnd = `${selectedDate}T10:00`;
+  const selectedContact = state.calendarContacts.find((contact) => contact.id === event?.contactCardId) || null;
   const dialog = document.createElement("dialog");
   dialog.className = "personal-calendar-dialog";
-  dialog.innerHTML = `<form method="dialog" class="personal-calendar-form"><header><div><small>${event ? "編輯私人行程" : "新增私人行程"}</small><h2>${event ? esc(event.title) : "安排新行程"}</h2></div><button type="button" data-close>×</button></header><label>行程名稱<input name="title" maxlength="100" required value="${esc(event?.title || "")}"></label><div class="personal-calendar-form-grid"><label>標籤<select name="labelId">${editableLabels.map((label) => `<option value="${esc(label.id)}" ${label.id === (event?.labelId || personalLabel.id) ? "selected" : ""}>${esc(label.name)}</option>`).join("")}</select></label><label>關聯名片<select name="contactCardId"><option value="">不關聯名片</option>${state.calendarContacts.map((contact) => `<option value="${esc(contact.id)}" ${contact.id === event?.contactCardId ? "selected" : ""}>${esc(contact.displayName)}${contact.companyName ? `｜${esc(contact.companyName)}` : ""}</option>`).join("")}</select></label><label>開始時間<input name="startsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.startsAt) : defaultStart}"></label><label>結束時間<input name="endsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.endsAt) : defaultEnd}"></label><label>提醒時間<select name="reminderMinutes">${[[0,"不提醒"],[10,"10 分鐘前"],[30,"30 分鐘前"],[60,"1 小時前"],[1440,"1 天前"]].map(([value,label]) => `<option value="${value}" ${Number(event?.reminderMinutes || 0) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>地點<input name="location" maxlength="300" value="${esc(event?.location || "")}"></label></div><label>備註<textarea name="description" maxlength="2000" rows="3">${esc(event?.description || "")}</textarea></label><div class="personal-calendar-form-actions">${event ? `<button type="button" class="danger" data-delete>刪除行程</button>` : ""}<button type="button" class="btn alt" data-close>取消</button><button type="submit" class="btn">儲存行程</button></div></form>`;
+  dialog.innerHTML = `<form method="dialog" class="personal-calendar-form"><header><div><small>${event ? "編輯私人行程" : "新增私人行程"}</small><h2>${event ? esc(event.title) : "安排新行程"}</h2></div><button type="button" data-close>×</button></header><label>行程名稱<input name="title" maxlength="100" required value="${esc(event?.title || "")}" placeholder="例如：與王先生討論合作"></label><section class="calendar-form-section"><div class="calendar-label-picker"><label>行程分類<select name="labelId">${editableLabels.map((label) => `<option value="${esc(label.id)}" ${label.id === (event?.labelId || personalLabel.id) ? "selected" : ""}>${esc(label.name)}</option>`).join("")}</select></label><button type="button" data-add-calendar-label>＋ 新增標籤</button></div><p>「個人」是預設私人分類；你也可以建立工作、家庭、約訪或學習。公司與生日由系統同步，只用於顯示篩選。</p><div class="calendar-label-suggestions"><button type="button" data-label-suggestion="工作">工作</button><button type="button" data-label-suggestion="家庭">家庭</button><button type="button" data-label-suggestion="約訪">約訪</button><button type="button" data-label-suggestion="學習">學習</button></div></section><section class="calendar-form-section calendar-contact-picker"><label>會面／追蹤對象（選填）<input type="search" data-contact-search autocomplete="off" value="${esc(selectedContact?.displayName || "")}" placeholder="搜尋姓名、公司或職稱"><input type="hidden" name="contactCardId" value="${esc(event?.contactCardId || "")}"></label><p>選擇收藏名片後，行程會記在這位聯絡人的約訪紀錄中；沒有特定對象可留空。</p><div class="calendar-contact-selected" data-contact-selected>${selectedContact ? `<b>${esc(selectedContact.displayName)}</b><span>${esc([selectedContact.companyName,selectedContact.jobTitle].filter(Boolean).join("・"))}</span><button type="button" data-clear-contact>清除</button>` : "尚未選擇對象"}</div><div class="calendar-contact-results" data-contact-results hidden></div></section><div class="personal-calendar-form-grid"><label>開始時間<input name="startsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.startsAt) : defaultStart}"></label><label>結束時間<input name="endsAt" type="datetime-local" required value="${event ? calendarLocalInput(event.endsAt) : defaultEnd}"></label><label>提醒時間<select name="reminderMinutes">${[[0,"不提醒"],[10,"10 分鐘前"],[30,"30 分鐘前"],[60,"1 小時前"],[1440,"1 天前"]].map(([value,label]) => `<option value="${value}" ${Number(event?.reminderMinutes || 0) === value ? "selected" : ""}>${label}</option>`).join("")}</select></label><label>地點<input name="location" maxlength="300" value="${esc(event?.location || "")}"></label></div><label>備註<textarea name="description" maxlength="2000" rows="3">${esc(event?.description || "")}</textarea></label><div class="personal-calendar-form-actions">${event ? `<button type="button" class="danger" data-delete>刪除行程</button>` : ""}<button type="button" class="btn alt" data-close>取消</button><button type="submit" class="btn">儲存行程</button></div></form>`;
   document.body.append(dialog);
+  const labelSelect = dialog.querySelector(`[name="labelId"]`);
+  const addLabel = async (suggested = "") => {
+    try { const label = await createCalendarLabelPrompt(suggested); if (!label) return; const option=document.createElement("option"); option.value=label.id; option.textContent=label.name; option.selected=true; labelSelect.append(option); }
+    catch (error) { alert(error.message || "標籤建立失敗"); }
+  };
+  dialog.querySelector("[data-add-calendar-label]").onclick = () => addLabel();
+  dialog.querySelectorAll("[data-label-suggestion]").forEach((button) => button.onclick = () => addLabel(button.dataset.labelSuggestion || ""));
+  const contactSearch=dialog.querySelector("[data-contact-search]"),contactId=dialog.querySelector(`[name="contactCardId"]`),contactResults=dialog.querySelector("[data-contact-results]"),contactSelected=dialog.querySelector("[data-contact-selected]");
+  const selectContact=(contact)=>{contactId.value=contact?.id||"";contactSearch.value=contact?.displayName||"";contactSelected.innerHTML=contact?`<b>${esc(contact.displayName)}</b><span>${esc([contact.companyName,contact.jobTitle].filter(Boolean).join("・"))}</span><button type="button" data-clear-contact>清除</button>`:"尚未選擇對象";contactResults.hidden=true;contactSelected.querySelector("[data-clear-contact]")?.addEventListener("click",()=>selectContact(null));};
+  const searchContacts=()=>{const keyword=contactSearch.value.trim().toLowerCase();const matches=state.calendarContacts.filter((contact)=>!keyword||`${contact.displayName} ${contact.companyName} ${contact.jobTitle}`.toLowerCase().includes(keyword)).slice(0,12);contactResults.innerHTML=matches.length?matches.map((contact)=>`<button type="button" data-contact-id="${esc(contact.id)}"><b>${esc(contact.displayName)}</b><span>${esc([contact.companyName,contact.jobTitle].filter(Boolean).join("・")||"未填公司與職稱")}</span></button>`).join(""):`<p>找不到符合的收藏名片</p>`;contactResults.hidden=false;contactResults.querySelectorAll("[data-contact-id]").forEach((button)=>button.onclick=()=>selectContact(state.calendarContacts.find((contact)=>contact.id===button.dataset.contactId)));};
+  contactSearch.addEventListener("focus",searchContacts);contactSearch.addEventListener("input",()=>{contactId.value="";searchContacts();});
+  contactSelected.querySelector("[data-clear-contact]")?.addEventListener("click",()=>selectContact(null));
   dialog.querySelectorAll("[data-close]").forEach((button) => button.onclick = () => dialog.close());
   dialog.addEventListener("close", () => dialog.remove());
   dialog.querySelector("form").onsubmit = async (submitEvent) => {
@@ -642,17 +657,11 @@ function openCalendarEventDialog(event = null) {
     const form = new FormData(submitEvent.currentTarget);
     const payload = { title:form.get("title"), labelId:form.get("labelId"), contactCardId:form.get("contactCardId"), startsAt:calendarIsoFromLocal(form.get("startsAt")), endsAt:calendarIsoFromLocal(form.get("endsAt")), reminderMinutes:Number(form.get("reminderMinutes") || 0), location:form.get("location"), description:form.get("description") };
     const saveButton = submitEvent.currentTarget.querySelector(`button[type="submit"]`);
-    await withBusyButton(saveButton, "儲存中…", async () => {
-      await api(event ? `/v1/personal-calendar/events/${encodeURIComponent(event.id)}` : "/v1/personal-calendar/events", { method:event ? "PATCH" : "POST", body:JSON.stringify(payload) });
-      dialog.close();
-      await reloadPersonalCalendar();
-    }).catch((error) => alert(error.message || "行程儲存失敗"));
+    try { await withActionFeedback(saveButton, async () => { await api(event ? `/v1/personal-calendar/events/${encodeURIComponent(event.id)}` : "/v1/personal-calendar/events", { method:event ? "PATCH" : "POST", body:JSON.stringify(payload) }); dialog.close(); await reloadPersonalCalendar(); }, { busy:"儲存中…", success:"已儲存" }); }
+    catch (error) { alert(error.message || "行程儲存失敗"); }
   };
   const deleteButton = dialog.querySelector("[data-delete]");
-  if (deleteButton) deleteButton.onclick = async () => {
-    if (!confirm("確定刪除這筆私人行程？")) return;
-    await withBusyButton(deleteButton, "刪除中…", async () => { await api(`/v1/personal-calendar/events/${encodeURIComponent(event.id)}`, { method:"DELETE" }); dialog.close(); await reloadPersonalCalendar(); }).catch((error) => alert(error.message || "刪除失敗"));
-  };
+  if (deleteButton) deleteButton.onclick = async () => { if (!confirm("確定刪除這筆私人行程？")) return; try { await withActionFeedback(deleteButton, async () => { await api(`/v1/personal-calendar/events/${encodeURIComponent(event.id)}`, { method:"DELETE" }); dialog.close(); await reloadPersonalCalendar(); }, { busy:"刪除中…", success:"已刪除" }); } catch (error) { alert(error.message || "刪除失敗"); } };
   dialog.showModal();
 }
 function renderPersonalCalendarView() {
@@ -680,7 +689,7 @@ function renderPersonalCalendarView() {
   document.querySelectorAll("[data-calendar-date]").forEach((button)=>button.onclick=()=>{state.calendarSelectedDate=button.dataset.calendarDate||"";renderPersonalCalendarView();});
   document.querySelectorAll("[data-label-toggle]").forEach((button)=>button.onclick=async()=>{const label=state.calendarLabels.find((item)=>item.id===button.dataset.labelToggle);if(!label)return;button.disabled=true;try{await setCalendarLabelVisible(label,!label.visible);}catch(error){alert(error.message||"標籤更新失敗");button.disabled=false;}});
   document.querySelectorAll("[data-edit-event]").forEach((button)=>button.onclick=()=>openCalendarEventDialog(state.calendarSessions.find((event)=>event.id===button.dataset.editEvent)));
-  $("#calendarAddLabel").onclick=createCalendarLabelPrompt;
+  $("#calendarAddLabel").onclick=async()=>{try{const label=await createCalendarLabelPrompt();if(label)renderPersonalCalendarView();}catch(error){alert(error.message||"標籤建立失敗");}};
   $("#calendarAddEvent").onclick=()=>openCalendarEventDialog();
   $("#calendarPrev").onclick=()=>{const next=new Date(year,month-2,1);state.calendarMonth=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;state.calendarSelectedDate="";renderPersonalCalendarView();};
   $("#calendarNext").onclick=()=>{const next=new Date(year,month,1);state.calendarMonth=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}`;state.calendarSelectedDate="";renderPersonalCalendarView();};
