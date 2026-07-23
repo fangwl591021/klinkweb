@@ -444,3 +444,29 @@ button.portal-profile{
   font-size:12px;
   line-height:1.5;
 }
+
+
+.profile-line-contact{
+  display:grid;
+  gap:8px;
+  margin:14px 0;
+  padding:14px;
+  border:1px solid #b9e2c8;
+  border-radius:14px;
+  background:#f1fbf5;
+}
+.profile-line-contact>strong{
+  color:#087b3e;
+  font-size:16px;
+}
+.profile-line-contact label{
+  margin:0;
+  font-weight:800;
+}
+.profile-line-contact input{
+  width:100%;
+  margin:0;
+}
+.profile-line-contact .profile-field-hint{
+  margin:0;
+}
