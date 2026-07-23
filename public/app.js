@@ -621,11 +621,16 @@ async function createCalendarLabelPrompt(suggestedName = "") {
   const initial = typeof suggestedName === "string" ? suggestedName : "";
   const name = prompt("建立行事曆標籤，例如：工作、家庭、約訪、學習", initial);
   if (!name?.trim()) return null;
+  const cleanName = name.trim();
   const suggestedColors = { "工作":"#345bdb", "家庭":"#d49121", "約訪":"#b65d79", "學習":"#8246ee" };
-  const color = prompt("標籤顏色（HEX 色碼）", suggestedColors[name.trim()] || "#52637d") || "#52637d";
-  const result = await api("/v1/personal-calendar/labels", { method:"POST", body:JSON.stringify({ name:name.trim(), color }) });
-  if (result.label) state.calendarLabels.push(result.label);
-  return result.label || null;
+  const current = state.calendarLabels.find((label) => label.sourceType === "custom" && label.name.trim().toLocaleLowerCase("zh-TW") === cleanName.toLocaleLowerCase("zh-TW"));
+  const color = prompt("標籤顏色（HEX 色碼）", current?.color || suggestedColors[cleanName] || "#52637d") || current?.color || "#52637d";
+  const result = await api("/v1/personal-calendar/labels", { method:"POST", body:JSON.stringify({ name:cleanName, color }) });
+  if (!result.label) return null;
+  const existingIndex = state.calendarLabels.findIndex((label) => label.id === result.label.id);
+  if (existingIndex >= 0) state.calendarLabels[existingIndex] = result.label;
+  else state.calendarLabels.push(result.label);
+  return result.label;
 }
 function openCalendarEventDialog(event = null) {
   const editableLabels = state.calendarLabels.filter((label) => !["company","birthday"].includes(label.sourceType));
@@ -640,7 +645,7 @@ function openCalendarEventDialog(event = null) {
   document.body.append(dialog);
   const labelSelect = dialog.querySelector(`[name="labelId"]`);
   const addLabel = async (suggested = "") => {
-    try { const label = await createCalendarLabelPrompt(suggested); if (!label) return; const option=document.createElement("option"); option.value=label.id; option.textContent=label.name; option.selected=true; labelSelect.append(option); }
+    try { const label = await createCalendarLabelPrompt(suggested); if (!label) return; let option=[...labelSelect.options].find((item)=>item.value===label.id); if(!option){option=document.createElement("option");option.value=label.id;labelSelect.append(option);} option.textContent=label.name; option.selected=true; }
     catch (error) { alert(error.message || "標籤建立失敗"); }
   };
   dialog.querySelector("[data-add-calendar-label]").onclick = () => addLabel();
