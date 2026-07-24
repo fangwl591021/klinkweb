@@ -118,8 +118,13 @@ test("consumer product renderer keeps safe result states separate", async () => 
   const end = source.indexOf("$(\"#smartProductResults\").innerHTML", start);
   const renderer = source.slice(start, end);
   assert.match(renderer, /visibleProducts = result\.blocked \? \[\] : products/);
-  assert.match(renderer, /visibleActions = result\.blocked \? \[\] : actions/);
-  assert.match(renderer, /answerText = result\.blocked \|\| hasPendingProduct \? ""/);
+  assert.match(renderer, /allPendingProducts = visibleProducts\.length > 0 && visibleProducts\.every/);
+  assert.match(renderer, /answerText = result\.blocked \|\| allPendingProducts \? ""/);
+  assert.match(renderer, /allPendingProducts/);
+  assert.match(renderer, /actions\.filter/);
+  assert.match(renderer, /disclaimerHtml = result\.blocked \|\| allPendingProducts \? ''/);
+  assert.match(renderer, /pendingHtml = hasPendingProduct/);
+  assert.doesNotMatch(renderer, /if \(pending\).*pendingCopy/);
   assert.doesNotMatch(renderer, /<p>[^']*<details/);
   assert.match(styles, /\.smart-product-disclaimer\{[^}]*font-size:11px[^}]*background:transparent/);
   assert.doesNotMatch(styles, /\.smart-product-disclaimer\{[^}]*background:#f7f4f5/);

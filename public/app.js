@@ -1930,20 +1930,22 @@ async function smartMatch() {
         : "";
       const visibleProducts = result.blocked ? [] : products;
       const hasPendingProduct = visibleProducts.some((product) => product.reviewStatus === "pending_review");
+      const allPendingProducts = visibleProducts.length > 0 && visibleProducts.every((product) => product.reviewStatus === "pending_review");
+      const pendingCopy = "這項商品的詳細資料還在整理中，你可以先問問推薦人。";
       const productCards = visibleProducts.map((product) => {
         const pending = product.reviewStatus === "pending_review";
         const facts = product.approvedPublicFacts?.length ? product.approvedPublicFacts.join(" ") : (product.facts || "");
-        const pendingCopy = "這項商品的詳細資料還在整理中，你可以先問問推薦人。";
         const usageLabel = /沖泡|沖調|飲用/.test(String(product.usage || "") + String(facts || "")) ? "怎麼沖泡" : "怎麼使用";
-        if (pending) return '<article class="smart-product-item"><header><strong>' + esc(product.productName || product.name || "") + '</strong></header><p>' + pendingCopy + '</p></article>';
+        if (pending) return '<article class="smart-product-item"><header><strong>' + esc(product.productName || product.name || "") + '</strong></header></article>';
         return '<article class="smart-product-item"><header><strong>' + esc(product.productName || product.name || "") + '</strong></header>' + (product.size ? '<b>' + esc(product.size) + '</b>' : '') + (facts ? '<p>' + esc(facts) + '</p>' : '') + (product.ingredients ? '<details><summary>看看成分</summary><p>' + esc(product.ingredients) + '</p></details>' : '') + (product.usage ? '<details><summary>' + usageLabel + '</summary><p>' + esc(product.usage) + '</p></details>' : '') + '</article>';
       }).join("");
       const priceQuery = /價格|價錢|折扣|優惠|促銷|活動/.test(query);
-      const answerText = result.blocked || hasPendingProduct ? "" : (result.answer || "目前沒有可提供的商品資料。");
+      const pendingHtml = hasPendingProduct ? '<p class="smart-product-pending-copy">' + pendingCopy + '</p>' : '';
+      const answerText = result.blocked || allPendingProducts ? "" : (result.answer || "目前沒有可提供的商品資料。");
       const answerHtml = answerText ? '<p>' + esc(answerText) + '</p>' : '';
-      const visibleActions = result.blocked ? [] : actions;
-      const disclaimerHtml = result.blocked ? '' : ((result.disclaimer || visibleProducts.length) ? '<small class="smart-product-disclaimer">' + (priceQuery ? "價格與活動內容請以公司最新公告為準。" : "商品資訊以官方最新公告為準。") + '</small>' : '');
-      const productAnswer = '<section class="card smart-product-answer ' + (result.blocked ? "blocked" : "") + '"><div class="smart-product-answer-head"><h2>' + (result.blocked ? "先不用商品建議" : "幫你快速整理") + '</h2></div>' + (result.blocked ? '<p>' + esc(result.answer || "這個問題暫時無法提供商品建議。") + '</p>' : '') + answerHtml + productCards + disclaimerHtml + (visibleActions.length ? '<div class="smart-product-actions">' + visibleActions.map((action) => { const label = action.type === "line" ? "問問推薦人" : "查看官方介紹"; return '<a class="btn ' + (action.type === "line" ? "" : "alt") + '" href="' + esc(action.url) + '" target="_blank" rel="noopener">' + label + '</a>'; }).join("") + '</div>' : '') + '</section>';
+      const visibleActions = result.blocked ? [] : (allPendingProducts ? actions.filter((action) => action.type === "line") : actions);
+      const disclaimerHtml = result.blocked || allPendingProducts ? '' : ((result.disclaimer || visibleProducts.length) ? '<small class="smart-product-disclaimer">' + (priceQuery ? "價格與活動內容請以公司最新公告為準。" : "商品資訊以官方最新公告為準。") + '</small>' : '');
+      const productAnswer = '<section class="card smart-product-answer ' + (result.blocked ? "blocked" : "") + '"><div class="smart-product-answer-head"><h2>' + (result.blocked ? "先不用商品建議" : "幫你快速整理") + '</h2></div>' + (result.blocked ? '<p>' + esc(result.answer || "這個問題暫時無法提供商品建議。") + '</p>' : '') + answerHtml + pendingHtml + productCards + disclaimerHtml + (visibleActions.length ? '<div class="smart-product-actions">' + visibleActions.map((action) => { const label = action.type === "line" ? "問問推薦人" : "查看官方介紹"; return '<a class="btn ' + (action.type === "line" ? "" : "alt") + '" href="' + esc(action.url) + '" target="_blank" rel="noopener">' + label + '</a>'; }).join("") + '</div>' : '') + '</section>';
       $("#smartProductResults").innerHTML = clarification || productAnswer;
     } catch (error) {
       $("#smartProductResults").innerHTML = `<div class="card collection-empty">${esc(error.message || "康立商品詢問失敗")}</div>`;
