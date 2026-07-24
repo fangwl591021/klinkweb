@@ -15,6 +15,11 @@ import {
 } from "./member-repository.js";
 import { adjustPoints, awardPoints, getWallet } from "./points.js";
 import {
+  LEGACY_NUMBER_SCIENCE_OTHER_EVENT,
+  NUMBER_SCIENCE_PRICE_RULES,
+  numberSciencePointCost,
+} from "./number-science-pricing.js";
+import {
   cancelCalendarSession,
   checkInToSession,
   smartCheckInToActiveSession,
@@ -128,7 +133,10 @@ const POINT_RULE_EVENTS = new Set([
   'referral_attendance_reward',
   'task_completed',
   'number_science_full_report',
-  'number_science_other_report',
+  'number_science_daily_report',
+  'number_science_matching_report',
+  'number_science_workplace_report',
+  'number_science_love_report',
   'card_collection_reward',
 ]);
 
@@ -140,16 +148,21 @@ const CANCELLED_POINT_RULE_EVENTS = [
 ];
 
 async function ensureServicePointRules(db) {
+  const numberScienceRules = NUMBER_SCIENCE_PRICE_RULES.map((rule) => {
+    const inheritedPoints = rule.requestType === 1
+      ? String(rule.defaultPoints)
+      : `COALESCE((SELECT points FROM point_rules WHERE program_id='program_main' AND event_type='${LEGACY_NUMBER_SCIENCE_OTHER_EVENT}' ORDER BY updated_at DESC LIMIT 1),${rule.defaultPoints})`;
+    return db.prepare(`INSERT OR IGNORE INTO point_rules
+      (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
+      VALUES ('${rule.ruleId}','program_main','${rule.eventType}',${inheritedPoints},NULL,'per_completion','active','v1')`);
+  });
   await db.batch([
-    db.prepare(`INSERT OR IGNORE INTO point_rules
-      (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
-      VALUES ('pointrule_number_science_full','program_main','number_science_full_report',50,NULL,'per_completion','active','v1')`),
-    db.prepare(`INSERT OR IGNORE INTO point_rules
-      (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
-      VALUES ('pointrule_number_science_other','program_main','number_science_other_report',10,NULL,'per_completion','active','v1')`),
+    ...numberScienceRules,
     db.prepare(`INSERT OR IGNORE INTO point_rules
       (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
       VALUES ('pointrule_card_collection','program_main','card_collection_reward',10,NULL,'per_completion','active','v1')`),
+    db.prepare(`UPDATE point_rules SET status='archived',updated_at=CURRENT_TIMESTAMP
+      WHERE program_id='program_main' AND event_type='${LEGACY_NUMBER_SCIENCE_OTHER_EVENT}' AND status!='archived'`),
     db.prepare(`UPDATE point_rules SET status='archived',updated_at=CURRENT_TIMESTAMP
       WHERE program_id='program_main' AND event_type IN ('daily_ad_checkin','member_joined','referral_attendance_reward','registration_completed')
         AND status!='archived'`),
@@ -158,16 +171,19 @@ async function ensureServicePointRules(db) {
 
 async function servicePointPricing(db) {
   await ensureServicePointRules(db);
+  const eventTypes = NUMBER_SCIENCE_PRICE_RULES.map((rule) => `'${rule.eventType}'`).join(",");
   const rows=await db.prepare(`SELECT event_type,points,status FROM point_rules
-    WHERE program_id='program_main' AND event_type IN ('number_science_full_report','number_science_other_report','card_collection_reward')
+    WHERE program_id='program_main' AND event_type IN (${eventTypes},'card_collection_reward')
     ORDER BY updated_at DESC`).all();
   const active=new Map();
   for(const row of rows.results || [])if(!active.has(row.event_type)&&row.status==='active')active.set(row.event_type,Number(row.points));
-  return {
-    fullReport: Number.isInteger(active.get('number_science_full_report')) ? active.get('number_science_full_report') : 50,
-    otherReport: Number.isInteger(active.get('number_science_other_report')) ? active.get('number_science_other_report') : 10,
-    cardCollectionReward: Number.isInteger(active.get('card_collection_reward')) ? active.get('card_collection_reward') : 0,
-  };
+  const pricing = {};
+  for (const rule of NUMBER_SCIENCE_PRICE_RULES) {
+    const points = active.get(rule.eventType);
+    pricing[rule.pricingKey] = Number.isInteger(points) ? points : rule.defaultPoints;
+  }
+  pricing.cardCollectionReward = Number.isInteger(active.get('card_collection_reward')) ? active.get('card_collection_reward') : 0;
+  return pricing;
 }
 
 function badRequest(message) {
@@ -321,7 +337,8 @@ async function proxyNumberScienceRequest(env, member, body = {}) {
       return json({ success: false, error: '請選擇本次報告使用的性別' }, 400);
     }
     payload.requestType = Number(body.requestType);
-    payload.pointCost = payload.requestType === 1 ? pricing.fullReport : pricing.otherReport;
+    payload.pointCost = numberSciencePointCost(pricing, payload.requestType);
+    if (payload.pointCost === null) return json({ success:false, error:'不支援的数字科学報告類型' }, 400);
     payload.consent = body.consent === true;
     payload.self = {
       name: member.displayName || '',
@@ -1668,7 +1685,7 @@ async function app(request, env, ctx) {
       const rules = await env.DB.prepare(`
         SELECT id, event_type, points, award_frequency, status, rule_version, created_at, updated_at
         FROM point_rules WHERE program_id = 'program_main'
-          AND event_type NOT IN ('daily_ad_checkin','member_joined','referral_attendance_reward','registration_completed')
+          AND event_type NOT IN ('daily_ad_checkin','member_joined','referral_attendance_reward','registration_completed','number_science_other_report')
         ORDER BY event_type ASC, updated_at DESC
       `).all();
       return json({ success: true, rules: rules.results || [] });

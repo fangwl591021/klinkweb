@@ -489,16 +489,15 @@ function showBirthdayRequiredDialog() {
   dialog.querySelector("[data-zodiac-prompt-fill]").onclick = async () => { dialog.remove(); sessionStorage.setItem("klinkweb_after_profile", "zodiac"); state.tab = "profile"; await render(); setTimeout(() => $("#birthday")?.focus(), 0); };
 }
 const numberScienceProducts = [
-  { type:1, key:"complete", title:"完整報告", description:"個人核心數字、特質與完整解析", cost:50, person:false },
-  { type:2, key:"daily", title:"流日", description:"依今日日期查看當日數字指引", cost:10, person:false },
-  { type:4, key:"matching", title:"配對", description:"輸入對方生日，查看彼此互動磁場", cost:10, person:true },
-  { type:5, key:"workplace", title:"職場", description:"分析你與工作夥伴的合作關係", cost:10, person:true },
-  { type:6, key:"love", title:"愛情", description:"分析兩人的情感互動與相處方向", cost:10, person:true },
+  { type:1, key:"complete", pricingKey:"fullReport", title:"完整報告", description:"個人核心數字、特質與完整解析", cost:50, person:false },
+  { type:2, key:"daily", pricingKey:"dailyReport", title:"流日", description:"依今日日期查看當日數字指引", cost:10, person:false },
+  { type:4, key:"matching", pricingKey:"matchingReport", title:"配對", description:"輸入對方生日，查看彼此互動磁場", cost:10, person:true },
+  { type:5, key:"workplace", pricingKey:"workplaceReport", title:"職場", description:"分析你與工作夥伴的合作關係", cost:10, person:true },
+  { type:6, key:"love", pricingKey:"loveReport", title:"愛情", description:"分析兩人的情感互動與相處方向", cost:10, person:true },
 ];
 function applyNumberSciencePricing(pricing={}) {
-  const full=Number(pricing.fullReport),other=Number(pricing.otherReport);
   for(const product of numberScienceProducts){
-    const next=product.type===1?full:other;
+    const next=Number(pricing[product.pricingKey]);
     if(Number.isInteger(next)&&next>0)product.cost=next;
   }
 }
@@ -557,7 +556,7 @@ function openNumberSciencePurchase(requestType) {
 }
 
 function numberSciencePanel(history=[]) {
-  return `<section class="number-science-card"><div class="number-science-heading"><div><small>生日 × 康立智能 K點</small><h2>数字科学</h2><p>完成註冊後，以會員生日產生個人化報告；只有成功取得報告才扣點。</p></div><span>報告服務</span></div><div class="number-science-products">${numberScienceProducts.map(product=>`<button type="button" data-number-science-product="${product.type}"><i>${product.cost}點</i><strong>${esc(product.title)}</strong><small>${esc(product.description)}</small><b>${product.cost} K點</b></button>`).join("")}</div>${history.length?`<div class="number-science-history"><h3>已購報告</h3>${history.map(item=>`<button type="button" data-number-science-history="${esc(item.id)}"><span><b>${esc(item.productLabel)}</b><small>${item.personName?`對象：${esc(item.personName)}・`:""}${new Date(Number(item.createdAt)||Date.now()).toLocaleDateString("zh-TW")}</small></span><i>查看</i></button>`).join("")}</div>`:""}<p class="number-science-disclaimer">完整報告 ${numberScienceProducts[0].cost} 點；流日、配對、職場、愛情各 ${numberScienceProducts[1].cost} 點。報告屬生活參考。</p></section>`;
+  return `<section class="number-science-card"><div class="number-science-heading"><div><small>生日 × 康立智能 K點</small><h2>数字科学</h2><p>完成註冊後，以會員生日產生個人化報告；只有成功取得報告才扣點。</p></div><span>報告服務</span></div><div class="number-science-products">${numberScienceProducts.map(product=>`<button type="button" data-number-science-product="${product.type}"><i>${product.cost}點</i><strong>${esc(product.title)}</strong><small>${esc(product.description)}</small><b>${product.cost} K點</b></button>`).join("")}</div>${history.length?`<div class="number-science-history"><h3>已購報告</h3>${history.map(item=>`<button type="button" data-number-science-history="${esc(item.id)}"><span><b>${esc(item.productLabel)}</b><small>${item.personName?`對象：${esc(item.personName)}・`:""}${new Date(Number(item.createdAt)||Date.now()).toLocaleDateString("zh-TW")}</small></span><i>查看</i></button>`).join("")}</div>`:""}<p class="number-science-disclaimer">${numberScienceProducts.map(product=>`${esc(product.title)} ${product.cost} 點`).join("；")}。報告屬生活參考。</p></section>`;
 }
 
 function bindNumberScience() {
