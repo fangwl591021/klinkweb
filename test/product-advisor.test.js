@@ -100,7 +100,7 @@ test("medical interception response remains blocked and has no products", async 
 
 test("consumer renderer uses natural copy and hides internal metadata", async () => {
   const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
-  const start = source.indexOf("const productCards = products.map");
+  const start = source.indexOf("const visibleProducts = result.blocked ? []");
   const end = source.indexOf("$(\"#smartProductResults\").innerHTML", start);
   const renderer = source.slice(start, end);
   assert.match(renderer, /幫你快速整理/);
@@ -109,4 +109,18 @@ test("consumer renderer uses natural copy and hides internal metadata", async ()
   assert.match(renderer, /問問推薦人/);
   assert.match(renderer, /查看官方介紹/);
   assert.doesNotMatch(renderer, /審核狀態|quadrantLabel|國際計畫/);
+});
+
+test("consumer product renderer keeps safe result states separate", async () => {
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+  const start = source.indexOf("const visibleProducts = result.blocked ? []");
+  const end = source.indexOf("$(\"#smartProductResults\").innerHTML", start);
+  const renderer = source.slice(start, end);
+  assert.match(renderer, /visibleProducts = result\.blocked \? \[\] : products/);
+  assert.match(renderer, /visibleActions = result\.blocked \? \[\] : actions/);
+  assert.match(renderer, /answerText = result\.blocked \|\| hasPendingProduct \? ""/);
+  assert.doesNotMatch(renderer, /<p>[^']*<details/);
+  assert.match(styles, /\.smart-product-disclaimer\{[^}]*font-size:11px[^}]*background:transparent/);
+  assert.doesNotMatch(styles, /\.smart-product-disclaimer\{[^}]*background:#f7f4f5/);
 });
