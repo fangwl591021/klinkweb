@@ -1881,7 +1881,7 @@ function isSupportedSmartMatchQuery(value = "") {
 
 async function smartMatch() {
   state.tab = "smartMatch";
-  layout(`<section class="smart-service-tabs" aria-label="智能服務"><button type="button" class="active" data-smart-service="talent">找人才</button><button type="button" data-smart-service="product">康立商品</button></section><div id="smartTalentPanel"><section class="card smart-match-card"><div class="smart-match-intro"><div><h2>智能人脈配對</h2><p class="muted">僅提供性格互補與事業夥伴篩選；AI 會結合名片五大標籤與你已購買的数字科学背景，選出最多 3 位合適人選。</p></div></div><label for="smartMatchQuery">我想尋找</label><textarea id="smartMatchQuery" rows="4" maxlength="300" placeholder="例如：尋找性格互補、適合共同拓展市場的事業夥伴"></textarea><div class="smart-match-pool"><span id="smartMatchPool">正在讀取名片收藏…</span><small>電話、Email、地址與私人備註不會傳給 AI；已購数字科学報告只作低權重參考，不另扣點</small></div><button class="btn" id="startSmartMatch" disabled>開始智能配對</button></section><section id="smartMatchResults" class="smart-match-results"><div class="card collection-empty">輸入需求後，配對結果會顯示在這裡。</div></section></div><div id="smartProductPanel" class="hidden"><section class="card smart-match-card smart-product-card"><div class="smart-match-intro"><div><h2>康立商品顧問</h2><p class="muted">可以幫你整理商品規格、成分、使用方式與款式。</p></div></div><label for="smartProductQuery">我想了解</label><textarea id="smartProductQuery" rows="4" maxlength="600" placeholder="例如：康綠寶的容量與沖泡方式是什麼？"></textarea><div class="smart-match-pool"><span>商品回答來自 MLM 結構化商品資料</span><small>商品資料依官方公開資訊整理。</small></div><button class="btn" id="startProductAsk">詢問康立商品</button></section><section id="smartProductResults" class="smart-match-results"><div class="card collection-empty">輸入商品問題後，核准範圍內的資料會顯示在這裡。</div></section></div>`);
+  layout(`<section class="smart-service-tabs" aria-label="智能服務"><button type="button" class="active" data-smart-service="talent">找人才</button><button type="button" data-smart-service="product">康立商品</button></section><div id="smartTalentPanel"><section class="card smart-match-card"><div class="smart-match-intro"><div><h2>智能人脈配對</h2><p class="muted">僅提供性格互補與事業夥伴篩選；AI 會結合名片五大標籤與你已購買的数字科学背景，選出最多 3 位合適人選。</p></div></div><label for="smartMatchQuery">我想尋找</label><textarea id="smartMatchQuery" rows="4" maxlength="300" placeholder="例如：尋找性格互補、適合共同拓展市場的事業夥伴"></textarea><div class="smart-match-pool"><span id="smartMatchPool">正在讀取名片收藏…</span><small>電話、Email、地址與私人備註不會傳給 AI；已購数字科学報告只作低權重參考，不另扣點</small></div><button class="btn" id="startSmartMatch" disabled>開始智能配對</button></section><section id="smartMatchResults" class="smart-match-results"><div class="card collection-empty">輸入需求後，配對結果會顯示在這裡。</div></section></div><div id="smartProductPanel" class="hidden"><section class="card smart-match-card smart-product-card"><div class="smart-match-intro"><div><h2>康立商品顧問</h2><p class="muted">可以幫你整理商品規格、成分、使用方式與款式。</p></div></div><label for="smartProductQuery">我想了解</label><textarea id="smartProductQuery" rows="4" maxlength="600" placeholder="例如：康綠寶的容量與沖泡方式是什麼？"></textarea><button class="btn" id="startProductAsk">詢問康立商品</button></section><section id="smartProductResults" class="smart-match-results"><div class="card collection-empty">輸入商品問題後，核准範圍內的資料會顯示在這裡。</div></section></div>`);
   const switchService = (service) => {
     const productMode = service === "product";
     $("#smartTalentPanel").classList.toggle("hidden", productMode);
@@ -1917,6 +1917,14 @@ async function smartMatch() {
       $("#smartMatchResults").innerHTML = `<div class="card collection-empty">${esc(message)}</div>`;
     }
   };
+  function smartProductAnswerTitle(products, blocked) {
+    if (blocked) return "先不用商品建議";
+    if (products.length === 1) return products[0].productName || products[0].name || "商品資訊";
+    return `找到${products.length}項相關商品`;
+  }
+  function smartProductCardHeader(product, showName) {
+    return showName ? "<header><strong>" + esc(product.productName || product.name || "") + "</strong></header>" : "";
+  }
   $("#startProductAsk").onclick = async () => {
     const productButton = $("#startProductAsk");
     const query = $("#smartProductQuery").value.trim();
@@ -1932,12 +1940,13 @@ async function smartMatch() {
       const hasPendingProduct = visibleProducts.some((product) => product.reviewStatus === "pending_review");
       const allPendingProducts = visibleProducts.length > 0 && visibleProducts.every((product) => product.reviewStatus === "pending_review");
       const pendingCopy = "這項商品的詳細資料還在整理中，你可以先問問推薦人。";
+      const showProductNames = visibleProducts.length > 1;
       const productCards = visibleProducts.map((product) => {
         const pending = product.reviewStatus === "pending_review";
         const facts = product.approvedPublicFacts?.length ? product.approvedPublicFacts.join(" ") : (product.facts || "");
         const usageLabel = /沖泡|沖調|飲用/.test(String(product.usage || "") + String(facts || "")) ? "怎麼沖泡" : "怎麼使用";
-        if (pending) return '<article class="smart-product-item"><header><strong>' + esc(product.productName || product.name || "") + '</strong></header></article>';
-        return '<article class="smart-product-item"><header><strong>' + esc(product.productName || product.name || "") + '</strong></header>' + (product.size ? '<b>' + esc(product.size) + '</b>' : '') + (facts ? '<p>' + esc(facts) + '</p>' : '') + (product.ingredients ? '<details><summary>看看成分</summary><p>' + esc(product.ingredients) + '</p></details>' : '') + (product.usage ? '<details><summary>' + usageLabel + '</summary><p>' + esc(product.usage) + '</p></details>' : '') + '</article>';
+        if (pending) return '<article class="smart-product-item">' + smartProductCardHeader(product, showProductNames) + '</article>';
+        return '<article class="smart-product-item">' + smartProductCardHeader(product, showProductNames) + (product.size ? '<b>' + esc(product.size) + '</b>' : '') + (facts ? '<p>' + esc(facts) + '</p>' : '') + (product.ingredients ? '<details><summary>看看成分</summary><p>' + esc(product.ingredients) + '</p></details>' : '') + (product.usage ? '<details><summary>' + usageLabel + '</summary><p>' + esc(product.usage) + '</p></details>' : '') + '</article>';
       }).join("");
       const priceQuery = /價格|價錢|折扣|優惠|促銷|活動/.test(query);
       const pendingHtml = hasPendingProduct ? '<p class="smart-product-pending-copy">' + pendingCopy + '</p>' : '';
@@ -1945,7 +1954,7 @@ async function smartMatch() {
       const answerHtml = answerText ? '<p>' + esc(answerText) + '</p>' : '';
       const visibleActions = result.blocked ? [] : (allPendingProducts ? actions.filter((action) => action.type === "line") : actions);
       const disclaimerHtml = result.blocked || allPendingProducts ? '' : ((result.disclaimer || visibleProducts.length) ? '<small class="smart-product-disclaimer">' + (priceQuery ? "價格與活動內容請以公司最新公告為準。" : "商品資訊以官方最新公告為準。") + '</small>' : '');
-      const productAnswer = '<section class="card smart-product-answer ' + (result.blocked ? "blocked" : "") + '"><div class="smart-product-answer-head"><h2>' + (result.blocked ? "先不用商品建議" : "幫你快速整理") + '</h2></div>' + (result.blocked ? '<p>' + esc(result.answer || "這個問題暫時無法提供商品建議。") + '</p>' : '') + answerHtml + pendingHtml + productCards + disclaimerHtml + (visibleActions.length ? '<div class="smart-product-actions">' + visibleActions.map((action) => { const label = action.type === "line" ? "問問推薦人" : "查看官方介紹"; return '<a class="btn ' + (action.type === "line" ? "" : "alt") + '" href="' + esc(action.url) + '" target="_blank" rel="noopener">' + label + '</a>'; }).join("") + '</div>' : '') + '</section>';
+      const productAnswer = '<section class="card smart-product-answer ' + (result.blocked ? "blocked" : "") + '"><div class="smart-product-answer-head"><h2>' + smartProductAnswerTitle(visibleProducts, result.blocked) + '</h2></div>' + (result.blocked ? '<p>' + esc(result.answer || "這個問題暫時無法提供商品建議。") + '</p>' : '') + answerHtml + pendingHtml + productCards + disclaimerHtml + (visibleActions.length ? '<div class="smart-product-actions">' + visibleActions.map((action) => { const label = action.type === "line" ? "問問推薦人" : "查看官方介紹"; return '<a class="btn ' + (action.type === "line" ? "" : "alt") + '" href="' + esc(action.url) + '" target="_blank" rel="noopener">' + label + '</a>'; }).join("") + '</div>' : '') + '</section>';
       $("#smartProductResults").innerHTML = clarification || productAnswer;
     } catch (error) {
       $("#smartProductResults").innerHTML = `<div class="card collection-empty">${esc(error.message || "康立商品詢問失敗")}</div>`;
