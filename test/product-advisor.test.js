@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { askMlmProductAdvisor, communicationQuadrant } from "../src/product-advisor.js";
 
 test("communication style uses existing profile signals and safely defaults", () => {
@@ -95,4 +96,17 @@ test("medical interception response remains blocked and has no products", async 
   assert.equal(result.blocked, true);
   assert.equal(result.blockReason, "medical_query");
   assert.deepEqual(result.products, []);
+});
+
+test("consumer renderer uses natural copy and hides internal metadata", async () => {
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("const productCards = products.map");
+  const end = source.indexOf("$(\"#smartProductResults\").innerHTML", start);
+  const renderer = source.slice(start, end);
+  assert.match(renderer, /幫你快速整理/);
+  assert.match(renderer, /看看成分/);
+  assert.match(renderer, /怎麼使用/);
+  assert.match(renderer, /問問推薦人/);
+  assert.match(renderer, /查看官方介紹/);
+  assert.doesNotMatch(renderer, /審核狀態|quadrantLabel|國際計畫/);
 });
