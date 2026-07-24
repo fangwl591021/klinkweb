@@ -103,7 +103,8 @@ test("consumer renderer uses natural copy and hides internal metadata", async ()
   const start = source.indexOf("const visibleProducts = result.blocked ? []");
   const end = source.indexOf("$(\"#smartProductResults\").innerHTML", start);
   const renderer = source.slice(start, end);
-  assert.match(renderer, /幫你快速整理/);
+  assert.match(renderer, /visibleProducts\.length === 1/);
+  assert.ok(renderer.includes("找到\\${visibleProducts.length}項相關商品"));
   assert.match(renderer, /看看成分/);
   assert.match(renderer, /怎麼使用/);
   assert.match(renderer, /問問推薦人/);
@@ -128,4 +129,15 @@ test("consumer product renderer keeps safe result states separate", async () => 
   assert.doesNotMatch(renderer, /<p>[^']*<details/);
   assert.match(styles, /\.smart-product-disclaimer\{[^}]*font-size:11px[^}]*background:transparent/);
   assert.doesNotMatch(styles, /\.smart-product-disclaimer\{[^}]*background:#f7f4f5/);
+});
+
+test("product panel removes internal source copy and keeps dynamic titles", async () => {
+  const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
+  const start = source.indexOf('id="smartProductPanel"');
+  const end = source.indexOf('id="smartProductResults"', start);
+  const productPanel = source.slice(start, end);
+  assert.doesNotMatch(productPanel, /商品回答來自 MLM 結構化商品資料|商品資料依官方公開資訊整理/);
+  assert.doesNotMatch(productPanel, /smart-match-pool/);
+  assert.match(source, /visibleProducts\.length === 1/);
+  assert.ok(source.includes("找到\\${visibleProducts.length}項相關商品"));
 });
