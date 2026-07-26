@@ -86,10 +86,14 @@ function insightMeta(row = {}) {
   };
 }
 export function normaliseIndustryClassification(value = {}) {
-  const primary = INDUSTRY_SET.has(value.primary) ? value.primary : INDUSTRY_PENDING;
-  const secondary = Array.isArray(value.secondary)
-    ? [...new Set(value.secondary.filter((item)=>INDUSTRY_SET.has(item) && item !== primary))].slice(0,2)
+  const requestedPrimary = INDUSTRY_SET.has(value.primary) ? value.primary : INDUSTRY_PENDING;
+  const requestedSecondary = Array.isArray(value.secondary)
+    ? [...new Set(value.secondary.filter((item)=>INDUSTRY_SET.has(item)))]
     : [];
+  const primary = value.source === 'manual' && requestedPrimary === INDUSTRY_PENDING && requestedSecondary.length
+    ? requestedSecondary[0]
+    : requestedPrimary;
+  const secondary = requestedSecondary.filter((item)=>item !== primary).slice(0,2);
   const confidence = Math.max(0,Math.min(1,Number(value.confidence) || 0));
   const uncertain = value.source !== 'manual' && (primary === INDUSTRY_PENDING || confidence < 0.6);
   return {

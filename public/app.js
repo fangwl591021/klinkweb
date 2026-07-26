@@ -1733,6 +1733,7 @@ let collectionCards = [];
 let collectionScanFiles = [];
 let collectionIndustryOptions = [];
 let collectionRankingEnabled = false;
+let collectionRefreshTimer = null;
 const collectionFields = [
   ["displayName","姓名","text"],["englishName","英文姓名","text"],["companyName","公司","text"],["jobTitle","職稱","text"],
   ["department","部門","text"],["mobile","手機","tel"],["companyPhone","公司電話","tel"],["email","Email","email"],
@@ -1985,10 +1986,13 @@ async function smartMatch() {
   };
 }
 
-async function cardCollection(search = "", industry = "") {
+async function cardCollection(search = "", industry = "", quiet = false) {
   state.tab="cardCollection";
-  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><nav id="collectionIndustryFilters" class="collection-industry-filters" aria-label="行業分類篩選"></nav><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><div class="collection-list-tools"><button type="button" id="toggleCollectionRanking" class="${collectionRankingEnabled?"active":""}">配對排名</button><span id="collectionCount">載入中…</span></div></div><p class="muted collection-system-note">名片先完成 OCR 並寫入收藏；AI 五大標籤會在後台接續補齊，不影響收藏與贈點。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
-  bindScanInputs();
+  if(collectionRefreshTimer){clearTimeout(collectionRefreshTimer);collectionRefreshTimer=null;}
+  if(!quiet){
+    layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><nav id="collectionIndustryFilters" class="collection-industry-filters" aria-label="行業分類篩選"></nav><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><div class="collection-list-tools"><button type="button" id="toggleCollectionRanking" class="${collectionRankingEnabled?"active":""}">配對排名</button><span id="collectionCount">載入中…</span></div></div><p class="muted collection-system-note">名片先完成 OCR 並寫入收藏；AI 五大標籤會在後台接續補齊，不影響收藏與贈點。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
+    bindScanInputs();
+  }
   try {
     const result=await api(`/v1/card-collection?search=${encodeURIComponent(search)}&industry=${encodeURIComponent(industry)}`);
     collectionCards=result.cards;
@@ -2012,7 +2016,7 @@ async function cardCollection(search = "", industry = "") {
         const progress=ocrPending ? "正在進行 OCR 名片辨識…" : pending ? `${facts}｜五大標籤背景分析中` : facts;
         const industries=[card.industry?.primary,...(card.industry?.secondary || [])].filter(Boolean);
         const match=card.memberMatch || {};
-        const matchText=match.status==="ready" ? `${match.score}%` : match.status==="failed" ? "待重算" : "分析中";
+        const matchText=match.status==="ready" ? `${match.score}%` : match.status==="failed" ? "待重算" : ['queued','processing'].includes(match.status) ? "分析中" : "待配對";
         const rankText=collectionRankingEnabled && match.status==="ready" ? `第 ${match.rank} 名` : "";
         return `<button class="contact-row" data-contact-id="${esc(card.id)}"><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc(card.displayName.slice(0,1))}</span><span><strong>${esc(card.displayName)}</strong><small>${esc(progress)}</small><span class="contact-industry-tags">${industries.map((label)=>`<i>${esc(label)}</i>`).join("")}</span></span><span class="contact-rank-summary">${rankText?`<small>${esc(rankText)}</small>`:""}<strong>${esc(matchText)}</strong><b>›</b></span></button>`;
       }).join(""):`<div class="collection-empty">尚未收藏名片，從上方拍照或相簿開始。</div>`;
@@ -2021,9 +2025,9 @@ async function cardCollection(search = "", industry = "") {
     };
     $("#toggleCollectionRanking").onclick=()=>{collectionRankingEnabled=!collectionRankingEnabled;renderRows();};
     renderRows();
-    if(analyzing) setTimeout(()=>{if(state.tab==="cardCollection")cardCollection(search,industry);},6500);
-  } catch(error){$("#collectionRows").innerHTML=`<p class="muted">${esc(error.message)}</p>`;}
-  const run=()=>cardCollection($("#collectionSearch").value.trim(),industry);$("#runCollectionSearch").onclick=run;$("#collectionSearch").onkeydown=(event)=>{if(event.key==="Enter")run()};
+    if(analyzing)collectionRefreshTimer=setTimeout(()=>{if(state.tab==="cardCollection")cardCollection(search,industry,true);},6500);
+  } catch(error){if(!quiet)$("#collectionRows").innerHTML=`<p class="muted">${esc(error.message)}</p>`;}
+  if(!quiet){const run=()=>cardCollection($("#collectionSearch").value.trim(),industry);$("#runCollectionSearch").onclick=run;$("#collectionSearch").onkeydown=(event)=>{if(event.key==="Enter")run()};}
 }
 
 async function publicCard() {
