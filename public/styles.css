@@ -490,3 +490,11 @@ button.portal-profile{
 .collection-industry-secondary input{width:auto!important;min-height:0!important;margin:0!important}
 .collection-industry-secondary label:has(input:checked){background:#dff2e7;color:#17643e}
 .collection-industry-secondary label:has(input:disabled){opacity:.55}
+.collection-list-tools{display:flex;align-items:center;gap:10px}
+.collection-list-tools button{padding:7px 11px;border:1px solid #d8e1de;border-radius:999px;background:#fff;color:#386653;font:800 12px inherit;cursor:pointer}
+.collection-list-tools button.active{border-color:#198754;background:#198754;color:#fff}
+.collection-list-tools>span{white-space:nowrap}
+.contact-rank-summary{display:grid;grid-template-columns:auto auto;gap:2px 7px;align-items:center;justify-items:end;min-width:62px}
+.contact-rank-summary small{grid-column:1/-1;color:#6d7d94;font-size:11px;font-weight:800}
+.contact-rank-summary strong{color:#198754;font-size:15px;white-space:nowrap}
+.contact-rank-summary b{color:#8ea2ca;font-size:24px}
