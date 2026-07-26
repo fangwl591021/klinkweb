@@ -93,6 +93,10 @@ import {
   queueMemberCrmInsight,
   queueSystemMemberCrmInsightBackfill,
 } from "./member-crm-insights.js";
+import {
+  processMemberMatchRankings,
+  queueMemberMatchRankingRefresh,
+} from "./member-match-ranking.js";
 import { syncMlmCourses } from "./mlm-course-sync.js";
 import {
   createCalendarLabel,
@@ -254,6 +258,7 @@ function scheduleCardImportPipeline(env, ctx, userId, eventId, provider = null) 
       // OCR 收藏成立後先贈點；五大標籤是第二階段，失敗不影響收藏與贈點。
       await queueAndFulfillCardCollectionReward(env,userId,processed.card.id);
       await processContactInsightsInBackground(env.DB,userId,processed.card.id,aiProvider,env.OPENAI_CARD_MODEL);
+      if(await queueMemberMatchRankingRefresh(env.DB,userId,true,processed.card.id))await processMemberMatchRankings(env.DB,userId,aiProvider,env.OPENAI_CARD_MODEL);
     }
     return processed;
   })();
@@ -267,6 +272,7 @@ function scheduleContactCrmInsights(env, ctx, userId, id) {
     const aiProvider=await resolveCardAiProvider(env);
     if(!aiProvider)throw new Error('MLM AI 服務尚未連線');
     await processContactInsightsInBackground(env.DB,userId,id,aiProvider,env.OPENAI_CARD_MODEL);
+    if(await queueMemberMatchRankingRefresh(env.DB,userId,true,id))await processMemberMatchRankings(env.DB,userId,aiProvider,env.OPENAI_CARD_MODEL);
   })();
   if(ctx?.waitUntil)ctx.waitUntil(task);
   else task.catch((error)=>console.error('Automatic CRM insight analysis failed',error));
@@ -277,9 +283,23 @@ function scheduleMemberCrmInsights(env,ctx,userId) {
     const openAIKey=await resolveOpenAIKey(env.DB,env.SESSION_SIGNING_SECRET,env.OPENAI_API_KEY);
     if(!openAIKey)throw new Error('AI 五大標籤尚未設定 API 金鑰');
     await processMemberCrmInsight(env.DB,userId,openAIKey,env.OPENAI_CARD_MODEL);
+    if(await queueMemberMatchRankingRefresh(env.DB,userId,true))await processMemberMatchRankings(env.DB,userId,openAIKey,env.OPENAI_CARD_MODEL);
   })();
   if(ctx?.waitUntil)ctx.waitUntil(task);
   else task.catch((error)=>console.error('Automatic member CRM insight analysis failed',error));
+}
+
+function scheduleMemberMatchRanking(env,ctx,userId,alreadyQueued=false) {
+  const task=(async()=>{
+    const queued=alreadyQueued ? 1 : await queueMemberMatchRankingRefresh(env.DB,userId);
+    if(!queued)return {processed:0,ranked:0};
+    const aiProvider=await resolveCardAiProvider(env);
+    if(!aiProvider)throw new Error('MLM AI 服務尚未連線');
+    return processMemberMatchRankings(env.DB,userId,aiProvider,env.OPENAI_CARD_MODEL);
+  })();
+  if(ctx?.waitUntil)ctx.waitUntil(task);
+  else task.catch((error)=>console.error('Automatic member match ranking failed',error));
+  return task;
 }
 
 async function readJson(request) {
@@ -847,6 +867,18 @@ async function app(request, env, ctx) {
   if (request.method === "GET" && url.pathname === "/v1/card-collection") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    let memberRankingStatus=await getMemberCrmInsight(env.DB,member.userId);
+    const memberInsightStale=['queued','processing'].includes(memberRankingStatus.status)
+      && memberRankingStatus.updatedAt
+      && Date.parse(memberRankingStatus.updatedAt)<Date.now()-(memberRankingStatus.status==='queued'?5:30)*60*1000;
+    if(!memberRankingStatus.status || memberRankingStatus.status==='failed'){
+      await queueMemberCrmInsight(env.DB,member.userId);
+      scheduleMemberCrmInsights(env,ctx,member.userId);
+      memberRankingStatus={...memberRankingStatus,status:'queued'};
+    } else if(memberInsightStale){
+      scheduleMemberCrmInsights(env,ctx,member.userId);
+      memberRankingStatus={...memberRankingStatus,status:'queued'};
+    }
     // 使用者開啟收藏頁時，立即救援因 Worker 重啟或 AI 逾時留下的舊工作。
     // OCR 與五大標籤各自重跑，不再互相阻塞。
     const recovery=await queueMemberStaleCardAnalysis(env.DB,member.userId,3).catch((error)=>{
@@ -861,11 +893,17 @@ async function app(request, env, ctx) {
       return {scanned:0,completed:0};
     });
     if(ctx?.waitUntil)ctx.waitUntil(rewardRecovery);else rewardRecovery.catch(()=>null);
+    const rankingQueued=await queueMemberMatchRankingRefresh(env.DB,member.userId).catch((error)=>{
+      console.error("Member match ranking queue failed",error);
+      return 0;
+    });
+    if(rankingQueued)scheduleMemberMatchRanking(env,ctx,member.userId,true);
     return json({
       success:true,
       cards:await listContacts(env.DB,member.userId,url.searchParams.get("search") || "",url.searchParams.get("industry") || ""),
       industryOptions:INDUSTRY_OPTIONS,
-      recovery:{imports:(recovery.imports || []).length,insights:(recovery.insights || []).length},
+      rankingStatus:memberRankingStatus.status,
+      recovery:{imports:(recovery.imports || []).length,insights:(recovery.insights || []).length,rankings:rankingQueued},
     });
   }
 
