@@ -1,5 +1,6 @@
 import { newId } from './member-repository.js';
 import { sha256 } from './auth.js';
+import { memberMatchFromVersions } from './member-match-ranking.js';
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -54,6 +55,7 @@ function normaliseVersions(value, row = {}) {
   const normalized = parseVersions({ ...row, versions_json:JSON.stringify(value && typeof value === 'object' ? value : {}) });
   if (source._crmInsights) normalized._crmInsights = source._crmInsights;
   if (source._industry) normalized._industry = source._industry;
+  if (source._memberMatch) normalized._memberMatch = source._memberMatch;
   return normalized;
 }
 export const normalizePhone = (value) => text(value, 60).replace(/[^0-9+]/g, '').replace(/^\+8860?/, '0');
@@ -123,7 +125,7 @@ function rowToCard(row) {
   const versions = parseVersions(row);
   const selectedVersion = CARD_VERSIONS.includes(row.selected_version) ? row.selected_version : 'standard';
   const selected = versions[selectedVersion];
-  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), aiInsights:insightMeta(row), industry:industryMeta(row), createdAt:row.created_at, updatedAt:row.updated_at };
+  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), aiInsights:insightMeta(row), industry:industryMeta(row), memberMatch:memberMatchFromVersions(row.versions_json), createdAt:row.created_at, updatedAt:row.updated_at };
 }
 
 async function findDuplicate(db, ownerId, card, excludedId = '') {
@@ -528,7 +530,10 @@ export async function updateContact(db,userId,id,payload) {
   const versions = normaliseVersions(payload.versions, existing);
   const existingCard=rowToCard(existing);
   const insightInputChanged=CRM_INSIGHT_SOURCE_KEYS.some((key)=>text(existingCard[key],FIELD_LIMITS[key] || 1000) !== text(card[key],FIELD_LIMITS[key] || 1000));
-  if(insightInputChanged)versions._crmInsights={status:'queued',cards:{},updatedAt:new Date().toISOString(),error:''};
+  if(insightInputChanged){
+    versions._crmInsights={status:'queued',cards:{},updatedAt:new Date().toISOString(),error:''};
+    if(versions._memberMatch)versions._memberMatch={...versions._memberMatch,status:'pending',rank:0,updatedAt:new Date().toISOString()};
+  }
   if(payload.industry && typeof payload.industry === 'object'){
     versions._industry=normaliseIndustryClassification({
       primary:payload.industry.primary,
