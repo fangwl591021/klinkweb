@@ -38,33 +38,42 @@ async function memberFacts(db,userId) {
     WHERE mp.platform_user_id=?`).bind(userId).first();
 }
 
-async function generateMemberCrmInsights(db,userId,apiKey,model) {
+async function callAiResponses(provider,body) {
+  if(!provider)throw new Error('MLM AI 服務尚未連線');
+  const internal=typeof provider!=='string';
+  const response=internal
+    ? await provider.fetch('https://mlm.internal/api/internal/ai/responses',{
+      method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({request:body}),
+    })
+    : await fetch('https://api.openai.com/v1/responses',{
+      method:'POST',headers:{authorization:`Bearer ${provider}`,'content-type':'application/json'},body:JSON.stringify(body),
+    });
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(result?.error?.message || result?.error || 'MLM AI 服務暫時無法使用');
+  return result;
+}
+
+export async function generateMemberCrmInsights(db,userId,provider,model) {
   const source=await memberFacts(db,userId);
   if(!source)throw new Error('找不到會員資料');
   const facts={name:text(source.display_name,120),mobile:text(source.phone,40).replace(/[^0-9+]/g,''),birthday:text(source.birthday,10),company:text(source.company_name,180),title:text(source.job_title,120)};
-  const response=await fetch('https://api.openai.com/v1/responses',{
-    method:'POST',
-    headers:{authorization:`Bearer ${apiKey}`,'content-type':'application/json'},
-    body:JSON.stringify({
+  const result=await callAiResponses(provider,{
       model:model || 'gpt-5.6-terra',reasoning:{effort:'low'},max_output_tokens:900,
       input:[{role:'user',content:`你是一位專業的商務 AI 心理與命理分析專家。請完全依照 LINE- 專案的五大標籤規則，根據姓名用字、手機號碼頻率與尾數、生日、公司及職稱，進行商務人格分析。\n\n姓名：${facts.name || '未知'}\n手機：${facts.mobile || '未知'}\n生日：${facts.birthday || '未知'}\n公司：${facts.company || '未知'}\n職稱：${facts.title || '未知'}\n\n分析邏輯與必含維度：\n1. 始終依姓名字形判斷行動／思考型、發音判斷外向／內斂、結構判斷主導／依附。\n2. 手機號碼依數字頻率分析（1領導、2協調、3表達、4穩定、5自由、6責任、7分析、8成就、9理想），以尾數判斷快攻／慢養決策模式，以奇偶比判斷衝動／保守。\n3. 有生日時，融合八字、紫微斗數、生命靈數與東西方星座學，分析先天傾向、潛能與目前適合的商務互動方式；資料不足時不可虛構精確命盤。\n4. 五項結果必須明確融合：VAK 感官接收偏好（視覺／聽覺／觸覺）、思考與決策模式（分析／數據／直覺）、行為與風險偏好（積極／消極、冒險／保守）。\n5. Personality、Hobbies、Wealth、Health、Career 每項必須為 20 至 40 個繁體中文字的完整情境描述，同時包含具體特徵與商務應對建議，不得只給單詞。\n6. Wealth 不得宣稱實際收入或資產；Health 不得診斷疾病；不可捏造獎項、客戶、年資、家庭、宗教或政治資訊。\n\n只回傳符合指定格式的 JSON。`}],
       text:{format:{type:'json_schema',name:'member_crm_five_insights',strict:true,schema:INSIGHTS_SCHEMA}},
-    }),
   });
-  const result=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(result?.error?.message || '會員 CRM 五大標籤暫時無法使用');
   const outputText=result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type==='output_text')?.text;
   if(!outputText)throw new Error('AI 未回傳會員 CRM 五大標籤');
   const parsed=JSON.parse(outputText);
   return Object.fromEntries(Object.entries(OUTPUT_KEYS).map(([outputKey,storageKey])=>[storageKey,text(parsed[outputKey],220)]));
 }
 
-export async function processMemberCrmInsight(db,userId,apiKey,model) {
+export async function processMemberCrmInsight(db,userId,provider,model) {
   await db.prepare(`INSERT INTO member_crm_insights (platform_user_id,status,insights_json,last_error)
     VALUES (?,'processing','{}','') ON CONFLICT(platform_user_id) DO UPDATE SET
     status='processing',last_error='',updated_at=CURRENT_TIMESTAMP`).bind(userId).run();
   try {
-    const cards=await generateMemberCrmInsights(db,userId,apiKey,model);
+    const cards=await generateMemberCrmInsights(db,userId,provider,model);
     await db.prepare("UPDATE member_crm_insights SET status='ready',insights_json=?,last_error='',analysis_version=?,updated_at=CURRENT_TIMESTAMP WHERE platform_user_id=?").bind(JSON.stringify(cards),ANALYSIS_VERSION,userId).run();
   } catch(error) {
     await db.prepare("UPDATE member_crm_insights SET status='failed',last_error=?,updated_at=CURRENT_TIMESTAMP WHERE platform_user_id=?").bind(text(error.message || '分析失敗',180),userId).run();

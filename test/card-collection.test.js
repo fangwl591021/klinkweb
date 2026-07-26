@@ -41,3 +41,14 @@ test('low-confidence AI classification stays pending but manual classification i
   assert.deepEqual(manual.secondary,['美容美業']);
   assert.equal(manual.manualLocked,true);
 });
+
+test('manual secondary selection repairs a pending primary industry', () => {
+  const manual=normaliseIndustryClassification({
+    primary:'待分類',
+    secondary:['科技資訊','行銷設計媒體'],
+    source:'manual',
+  });
+  assert.equal(manual.primary,'科技資訊');
+  assert.deepEqual(manual.secondary,['行銷設計媒體']);
+  assert.equal(manual.manualLocked,true);
+});
