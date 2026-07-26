@@ -2016,7 +2016,7 @@ async function cardCollection(search = "", industry = "", quiet = false) {
         const progress=ocrPending ? "正在進行 OCR 名片辨識…" : pending ? `${facts}｜五大標籤背景分析中` : facts;
         const industries=[card.industry?.primary,...(card.industry?.secondary || [])].filter(Boolean);
         const match=card.memberMatch || {};
-        const matchText=match.status==="ready" ? `${match.score}%` : match.status==="failed" ? "待重算" : ['queued','processing'].includes(match.status) ? "分析中" : "待配對";
+        const matchText=match.status==="ready" ? `${match.score}%` : match.status==="failed" ? "暫無結果" : ['queued','processing'].includes(match.status) ? "配對中" : "待配對";
         const rankText=collectionRankingEnabled && match.status==="ready" ? `第 ${match.rank} 名` : "";
         return `<button class="contact-row" data-contact-id="${esc(card.id)}"><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc(card.displayName.slice(0,1))}</span><span><strong>${esc(card.displayName)}</strong><small>${esc(progress)}</small><span class="contact-industry-tags">${industries.map((label)=>`<i>${esc(label)}</i>`).join("")}</span></span><span class="contact-rank-summary">${rankText?`<small>${esc(rankText)}</small>`:""}<strong>${esc(matchText)}</strong><b>›</b></span></button>`;
       }).join(""):`<div class="collection-empty">尚未收藏名片，從上方拍照或相簿開始。</div>`;
