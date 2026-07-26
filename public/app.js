@@ -1731,6 +1731,7 @@ async function card() {
 
 let collectionCards = [];
 let collectionScanFiles = [];
+let collectionIndustryOptions = [];
 const collectionFields = [
   ["displayName","姓名","text"],["englishName","英文姓名","text"],["companyName","公司","text"],["jobTitle","職稱","text"],
   ["department","部門","text"],["mobile","手機","tel"],["companyPhone","公司電話","tel"],["email","Email","email"],
@@ -1744,6 +1745,27 @@ function collectionForm(card = {}, prefix = "contact") {
   }).join("")}</div>`;
 }
 function readCollectionForm(prefix = "contact") { return Object.fromEntries(collectionFields.map(([key])=>[key,$(`#${prefix}-${key}`)?.value || ""])); }
+function collectionIndustryForm(card = {}) {
+  const selectedPrimary=card.industry?.primary || "待分類";
+  const selectedSecondary=new Set(card.industry?.secondary || []);
+  return `<fieldset class="collection-industry-editor"><legend>行業分類</legend><p>首次由 AI 分類；手動調整並儲存後，系統不會自動覆蓋。</p><label>主行業<select id="contact-industry-primary"><option value="待分類">待分類</option>${collectionIndustryOptions.map((industry)=>`<option value="${esc(industry)}" ${industry===selectedPrimary?"selected":""}>${esc(industry)}</option>`).join("")}</select></label><div class="collection-industry-secondary"><strong>次行業（最多 2 個）</strong>${collectionIndustryOptions.map((industry)=>`<label><input type="checkbox" name="contact-industry-secondary" value="${esc(industry)}" ${selectedSecondary.has(industry)?"checked":""}>${esc(industry)}</label>`).join("")}</div></fieldset>`;
+}
+function readCollectionIndustry() {
+  const primary=$("#contact-industry-primary")?.value || "待分類";
+  const secondary=Array.from(document.querySelectorAll('input[name="contact-industry-secondary"]:checked')).map((input)=>input.value).filter((value)=>value!==primary).slice(0,2);
+  return {primary,secondary};
+}
+function bindCollectionIndustryEditor() {
+  const primary=$("#contact-industry-primary");
+  const boxes=Array.from(document.querySelectorAll('input[name="contact-industry-secondary"]'));
+  const sync=()=>{
+    const checked=boxes.filter((box)=>box.checked);
+    boxes.forEach((box)=>{box.disabled=box.value===primary?.value || (!box.checked && checked.length>=2);if(box.value===primary?.value)box.checked=false;});
+  };
+  primary?.addEventListener("change",sync);
+  boxes.forEach((box)=>box.addEventListener("change",sync));
+  sync();
+}
 
 async function authorizedImageUrl(card) {
   if (!card.hasImage) return "";
@@ -1815,7 +1837,7 @@ async function showContactEditor(card) {
   const tabs = `<div class="business-card-tabs"><button data-collection-card-tab="contact" class="${view === "contact" ? "active" : ""}">聯絡資料</button><button data-collection-card-tab="edit" class="${view === "edit" ? "active" : ""}">編輯內容</button><button data-collection-card-tab="insights" class="${view === "insights" ? "active" : ""}">五大標籤</button></div>`;
   let panel = "";
   if (view === "contact") panel = `<div class="business-card-contact">${cardContactRows(card)}<div class="business-card-contact-actions">${cardActionItems(card).map((item) => `<a href="${esc(item.value)}" ${["url","line","map"].includes(item.type) ? 'target="_blank" rel="noopener"' : ""}>${esc(item.label)}</a>`).join("")}</div></div>`;
-  if (view === "edit") panel = `<form id="collectionCardForm" class="business-card-form">${collectionForm(card,"contact")}<button class="btn full" type="submit">儲存聯絡資料</button><button class="btn danger full" type="button" id="deleteContact">刪除名片</button></form>`;
+  if (view === "edit") panel = `<form id="collectionCardForm" class="business-card-form">${collectionIndustryForm(card)}${collectionForm(card,"contact")}<button class="btn full" type="submit">儲存聯絡資料</button><button class="btn danger full" type="button" id="deleteContact">刪除名片</button></form>`;
   if (view === "digital") panel = lineSourceEcardEditor(card, selected, { collection:true });
   if (view === "insights") {
     const viewed = cardWithVersion(card, selected.id);
@@ -1829,7 +1851,8 @@ async function showContactEditor(card) {
   $("#backCollection").onclick=()=>{ state.collectionCardView=""; state.collectionCardVersion=""; cardCollection(); };
   document.querySelectorAll("[data-collection-card-tab]").forEach((button) => button.onclick = () => { state.collectionCardView=button.dataset.collectionCardTab; showContactEditor(card); });
   if (view === "edit") {
-    $("#collectionCardForm").onsubmit=async(event)=>{event.preventDefault();const button=event.submitter;try{const updated=await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"PATCH",body:JSON.stringify({ ...readCollectionForm(), selectedVersion:card.selectedVersion, versions:card.versions, chatAltText:card.chatAltText })}),{busy:"儲存中…",success:"已儲存"});Object.assign(card,updated.card);state.collectionCardView="contact";showContactEditor(card);}catch(error){alert(error.message)}};
+    bindCollectionIndustryEditor();
+    $("#collectionCardForm").onsubmit=async(event)=>{event.preventDefault();const button=event.submitter;try{const updated=await withActionFeedback(button,()=>api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"PATCH",body:JSON.stringify({ ...readCollectionForm(), industry:readCollectionIndustry(), selectedVersion:card.selectedVersion, versions:card.versions, chatAltText:card.chatAltText })}),{busy:"儲存中…",success:"已儲存"});Object.assign(card,updated.card);state.collectionCardView="contact";showContactEditor(card);}catch(error){alert(error.message)}};
     $("#deleteContact").onclick=async()=>{if(!confirm(`確定刪除「${card.displayName}」？圖片也會一併刪除並釋放空間。`))return;try{await api(`/v1/card-collection/${encodeURIComponent(card.id)}`,{method:"DELETE"});state.collectionCardView="";cardCollection();}catch(error){alert(error.message)}};
     return;
   }
@@ -1961,12 +1984,17 @@ async function smartMatch() {
   };
 }
 
-async function cardCollection(search = "") {
+async function cardCollection(search = "", industry = "") {
   state.tab="cardCollection";
-  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><span id="collectionCount">載入中…</span></div><p class="muted collection-system-note">名片先完成 OCR 並寫入收藏；AI 五大標籤會在後台接續補齊，不影響收藏與贈點。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
+  layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><nav id="collectionIndustryFilters" class="collection-industry-filters" aria-label="行業分類篩選"></nav><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><span id="collectionCount">載入中…</span></div><p class="muted collection-system-note">名片先完成 OCR 並寫入收藏；AI 五大標籤會在後台接續補齊，不影響收藏與贈點。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
   bindScanInputs();
   try {
-    collectionCards=(await api(`/v1/card-collection?search=${encodeURIComponent(search)}`)).cards;
+    const result=await api(`/v1/card-collection?search=${encodeURIComponent(search)}&industry=${encodeURIComponent(industry)}`);
+    collectionCards=result.cards;
+    collectionIndustryOptions=result.industryOptions || collectionIndustryOptions;
+    const filters=["",...collectionIndustryOptions,"待分類"];
+    $("#collectionIndustryFilters").innerHTML=filters.map((value)=>`<button type="button" class="${value===industry?"active":""}" data-industry-filter="${esc(value)}">${esc(value || "全部")}</button>`).join("");
+    document.querySelectorAll("[data-industry-filter]").forEach((button)=>button.onclick=()=>cardCollection(search,button.dataset.industryFilter));
     const analyzing=collectionCards.some(card=>['queued','processing'].includes(card.aiInsights?.status));
     $("#collectionCount").textContent=`${collectionCards.length} 位`;
     $("#collectionRows").innerHTML=collectionCards.length?collectionCards.map(card=>{
@@ -1974,12 +2002,13 @@ async function cardCollection(search = "") {
       const ocrPending=card.displayName==="名片 AI 分析中";
       const facts=[card.companyName,card.jobTitle].filter(Boolean).join("／") || card.mobile || card.email || "名片已收藏";
       const progress=ocrPending ? "正在進行 OCR 名片辨識…" : pending ? `${facts}｜五大標籤背景分析中` : facts;
-      return `<button class="contact-row" data-contact-id="${esc(card.id)}"><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc(card.displayName.slice(0,1))}</span><span><strong>${esc(card.displayName)}</strong><small>${esc(progress)}</small></span><b>›</b></button>`;
+      const industries=[card.industry?.primary,...(card.industry?.secondary || [])].filter(Boolean);
+      return `<button class="contact-row" data-contact-id="${esc(card.id)}"><span class="contact-thumb">${card.hasImage?`<img data-contact-image="${esc(card.id)}" alt="">`:esc(card.displayName.slice(0,1))}</span><span><strong>${esc(card.displayName)}</strong><small>${esc(progress)}</small><span class="contact-industry-tags">${industries.map((label)=>`<i>${esc(label)}</i>`).join("")}</span></span><b>›</b></button>`;
     }).join(""):`<div class="collection-empty">尚未收藏名片，從上方拍照或相簿開始。</div>`;
     document.querySelectorAll("[data-contact-id]").forEach(button=>button.onclick=()=>showContactEditor(collectionCards.find(card=>card.id===button.dataset.contactId)));attachCollectionImages();
-    if(analyzing) setTimeout(()=>{if(state.tab==="cardCollection")cardCollection(search);},6500);
+    if(analyzing) setTimeout(()=>{if(state.tab==="cardCollection")cardCollection(search,industry);},6500);
   } catch(error){$("#collectionRows").innerHTML=`<p class="muted">${esc(error.message)}</p>`;}
-  const run=()=>cardCollection($("#collectionSearch").value.trim());$("#runCollectionSearch").onclick=run;$("#collectionSearch").onkeydown=(event)=>{if(event.key==="Enter")run()};
+  const run=()=>cardCollection($("#collectionSearch").value.trim(),industry);$("#runCollectionSearch").onclick=run;$("#collectionSearch").onkeydown=(event)=>{if(event.key==="Enter")run()};
 }
 
 async function publicCard() {
