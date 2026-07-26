@@ -111,8 +111,9 @@ function industryMeta(row = {}) {
 function withIndustryMeta(row, value, preserveManual = true) {
   const source=rawVersions(row);
   const existing=industryMeta(row);
-  if(preserveManual && existing.manualLocked)return JSON.stringify(source);
-  source._industry=normaliseIndustryClassification(value);
+  source._industry=preserveManual && existing.manualLocked
+    ? existing
+    : normaliseIndustryClassification(value);
   return JSON.stringify(source);
 }
 function industryFromOcr(result = {}) {
@@ -153,9 +154,19 @@ function bytesToBase64(buffer) {
 const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language','primaryIndustry','secondaryIndustries','industryConfidence',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, primaryIndustry:{type:'string',enum:[INDUSTRY_PENDING,...INDUSTRY_OPTIONS]}, secondaryIndustries:{type:'array',maxItems:2,items:{type:'string',enum:INDUSTRY_OPTIONS}}, industryConfidence:{type:'number'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
 const CONTENT_EXPANSION_SCHEMA = { type:'object', additionalProperties:false, required:['items'], properties:{ items:{ type:'array', minItems:3, maxItems:5, items:{ type:'string' } } } };
 const CRM_INSIGHT_KEYS = ['personality','interests','wealth','health','career'];
-const CRM_INSIGHT_ANALYSIS_VERSION = 'line-fate-v1';
+const CRM_INSIGHT_ANALYSIS_VERSION = 'line-fate-industry-v2';
 const CRM_INSIGHT_SOURCE_KEYS = ['displayName','companyName','jobTitle','department','serviceDescription','note','address'];
-const CRM_INSIGHTS_SCHEMA = { type:'object', additionalProperties:false, required:CRM_INSIGHT_KEYS, properties:Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,{type:'string'}])) };
+const CRM_INSIGHTS_SCHEMA = {
+  type:'object',
+  additionalProperties:false,
+  required:[...CRM_INSIGHT_KEYS,'primaryIndustry','secondaryIndustries','industryConfidence'],
+  properties:{
+    ...Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,{type:'string'}])),
+    primaryIndustry:{type:'string',enum:INDUSTRY_OPTIONS},
+    secondaryIndustries:{type:'array',maxItems:2,items:{type:'string',enum:INDUSTRY_OPTIONS}},
+    industryConfidence:{type:'number',minimum:0.6,maximum:1},
+  },
+};
 
 async function callAiResponses(provider, body) {
   if (!provider) throw new Error('名片 AI 辨識服務尚未連線');
@@ -225,16 +236,33 @@ export async function expandContactContent(db, userId, id, apiKey, model) {
 
 
 async function generateCrmInsights(apiKey, model, card) {
-  const facts = { name:card.displayName, mobile:text(card.mobile || card.companyPhone,40).replace(/[^0-9+]/g,''), birthday:'', company:card.companyName, title:card.jobTitle };
+  const facts = {
+    name:card.displayName,
+    mobile:text(card.mobile || card.companyPhone,40).replace(/[^0-9+]/g,''),
+    birthday:'',
+    company:card.companyName,
+    title:card.jobTitle,
+    department:card.department,
+    serviceDescription:card.serviceDescription,
+  };
   const result = await callAiResponses(apiKey, {
       model:model || 'gpt-5.6-terra', reasoning:{effort:'low'}, max_output_tokens:900,
-      input:[{ role:'user', content:`你是一位專業的商務 AI 心理與命理分析專家。請完全依照 LINE- 專案五大標籤規則分析這張掃描名片。\n\n姓名：${facts.name || '未知'}\n手機：${facts.mobile || '未知'}\n生日：${facts.birthday || '未知'}\n公司：${facts.company || '未知'}\n職稱：${facts.title || '未知'}\n\n分析規則：\n1. 姓名字形判斷行動／思考型，發音判斷外向／內斂，結構判斷主導／依附。\n2. 手機數字頻率依 1領導、2協調、3表達、4穩定、5自由、6責任、7分析、8成就、9理想分析；尾數判斷快攻／慢養，奇偶比判斷衝動／保守。\n3. 有生日時融合八字、紫微斗數、生命靈數與東西方星座；未提供生日就以現有欄位分析，不虛構命盤。\n4. 五項必須融合 VAK 感官偏好、分析／數據／直覺決策模式，以及積極／保守與風險偏好。\n5. personality、interests、wealth、health、career 每項以 20 至 40 個繁體中文字，同時描述具體特徵與商務應對建議。\n6. wealth 不宣稱實際收入或資產；health 不診斷疾病；不得捏造個資或經歷。只回傳 JSON。` }],
+      input:[{ role:'user', content:`你是一位專業的商務 AI 心理與命理分析專家。請完全依照 LINE- 專案五大標籤規則分析這張掃描名片。\n\n姓名：${facts.name || '未知'}\n手機：${facts.mobile || '未知'}\n生日：${facts.birthday || '未知'}\n公司：${facts.company || '未知'}\n職稱：${facts.title || '未知'}\n部門：${facts.department || '未知'}\n服務說明：${facts.serviceDescription || '未知'}\n\n分析規則：\n1. 姓名字形判斷行動／思考型，發音判斷外向／內斂，結構判斷主導／依附。\n2. 手機數字頻率依 1領導、2協調、3表達、4穩定、5自由、6責任、7分析、8成就、9理想分析；尾數判斷快攻／慢養，奇偶比判斷衝動／保守。\n3. 有生日時融合八字、紫微斗數、生命靈數與東西方星座；未提供生日就以現有欄位分析，不虛構命盤。\n4. 五項必須融合 VAK 感官偏好、分析／數據／直覺決策模式，以及積極／保守與風險偏好。\n5. personality、interests、wealth、health、career 每項以 20 至 40 個繁體中文字，同時描述具體特徵與商務應對建議。\n6. wealth 不宣稱實際收入或資產；health 不診斷疾病；不得捏造個資或經歷。\n7. 同時依公司、職稱、部門與服務說明完成業種分類。primaryIndustry 必須從以下選項選最接近的一項，不可回傳待分類：${INDUSTRY_OPTIONS.join('、')}。secondaryIndustries 最多兩項且不得與主業種重複；資料不足時主業種選「其他行業」。只回傳 JSON。` }],
       text:{format:{type:'json_schema',name:'crm_five_insights',strict:true,schema:CRM_INSIGHTS_SCHEMA}},
   });
   const outputText=result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type==='output_text')?.text;
   if(!outputText)throw new Error('AI 未回傳五大標籤');
   const parsed=JSON.parse(outputText);
-  return Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,text(parsed[key],220)]));
+  return {
+    cards:Object.fromEntries(CRM_INSIGHT_KEYS.map((key)=>[key,text(parsed[key],220)])),
+    industry:normaliseIndustryClassification({
+      primary:parsed.primaryIndustry,
+      secondary:parsed.secondaryIndustries,
+      confidence:parsed.industryConfidence,
+      source:'ai',
+      classifiedAt:new Date().toISOString(),
+    }),
+  };
 }
 function withInsightMeta(row, patch) {
   const source=rawVersions(row);
@@ -330,8 +358,12 @@ export async function processContactInsightsInBackground(db, userId, id, apiKey,
   await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'processing',error:''}),id).run();
   try {
     const card=rowToCard(row);
-    const cards=await generateCrmInsights(apiKey,model,card);
-    await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'ready',cards,error:'',analysisVersion:CRM_INSIGHT_ANALYSIS_VERSION}),id).run();
+    const analysis=await generateCrmInsights(apiKey,model,card);
+    const versionsJson=withIndustryMeta(
+      {...row,versions_json:withInsightMeta(row,{status:'ready',cards:analysis.cards,error:'',analysisVersion:CRM_INSIGHT_ANALYSIS_VERSION})},
+      analysis.industry,
+    );
+    await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(versionsJson,id).run();
   } catch(error) {
     await db.prepare("UPDATE contact_cards SET versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(withInsightMeta(row,{status:'failed',error:error.message || '分析失敗'}),id).run();
     console.error('Background CRM insight analysis failed',error);
@@ -386,6 +418,7 @@ export async function queueSystemCrmInsightBackfill(db, limit = 6) {
       OR (json_extract(versions_json, '$._crmInsights.status')='ready' AND COALESCE(json_extract(versions_json, '$._crmInsights.analysisVersion'),'')!=?)
       OR (json_extract(versions_json, '$._crmInsights.status')='queued' AND updated_at <= datetime('now','-5 minutes'))
       OR (json_extract(versions_json, '$._crmInsights.status')='processing' AND updated_at <= datetime('now','-5 minutes'))
+      OR COALESCE(json_extract(versions_json, '$._industry.primary'),'待分類')='待分類'
     ) ORDER BY updated_at ASC LIMIT ?`).bind(CRM_INSIGHT_ANALYSIS_VERSION,cappedLimit).all();
   const candidates=result.results || [];
   if(!candidates.length)return {queued:0,tasks:[]};
