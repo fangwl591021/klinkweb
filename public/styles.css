@@ -473,3 +473,20 @@ button.portal-profile{
 .profile-line-contact .profile-field-hint{
   margin:0;
 }
+
+/* Name-card industry classification and filtering. */
+.collection-industry-filters{display:flex;gap:8px;margin:0 0 14px;padding:2px 1px 7px;overflow-x:auto;scrollbar-width:thin}
+.collection-industry-filters button{flex:0 0 auto;padding:8px 12px;border:1px solid #d8e1de;border-radius:999px;background:#fff;color:#386653;font:800 13px inherit;cursor:pointer}
+.collection-industry-filters button.active{border-color:#198754;background:#198754;color:#fff}
+.contact-industry-tags{display:flex!important;gap:5px!important;overflow:hidden}
+.contact-industry-tags i{display:inline-block;padding:3px 7px;border-radius:999px;background:#eaf6ef;color:#237047;font-size:11px;font-style:normal;font-weight:800;white-space:nowrap}
+.collection-industry-editor{grid-column:1/-1;margin:0 0 16px;padding:14px;border:1px solid #dce7e1;border-radius:14px;background:#f7fbf9}
+.collection-industry-editor legend{padding:0 6px;color:#285b45;font-weight:900}
+.collection-industry-editor>p{margin:0 0 12px;color:#718078;font-size:12px}
+.collection-industry-editor select{box-sizing:border-box;width:100%;min-height:48px;margin:6px 0 12px;padding:10px;border:1px solid #d5dfda;border-radius:10px;background:#fff;font:inherit}
+.collection-industry-secondary{display:flex;flex-wrap:wrap;gap:7px}
+.collection-industry-secondary>strong{flex:0 0 100%;color:#6e6270;font-size:12px}
+.collection-industry-secondary label{display:flex;gap:5px;align-items:center;padding:7px 9px;border-radius:999px;background:#fff;color:#355f4d;font-size:12px!important}
+.collection-industry-secondary input{width:auto!important;min-height:0!important;margin:0!important}
+.collection-industry-secondary label:has(input:checked){background:#dff2e7;color:#17643e}
+.collection-industry-secondary label:has(input:disabled){opacity:.55}
