@@ -61,6 +61,7 @@ import {
   createImport,
   deleteContact,
   expandContactContent,
+  INDUSTRY_OPTIONS,
   listContacts,
   normalizeEmail,
   normalizeNameCompany,
@@ -862,7 +863,8 @@ async function app(request, env, ctx) {
     if(ctx?.waitUntil)ctx.waitUntil(rewardRecovery);else rewardRecovery.catch(()=>null);
     return json({
       success:true,
-      cards:await listContacts(env.DB,member.userId,url.searchParams.get("search") || ""),
+      cards:await listContacts(env.DB,member.userId,url.searchParams.get("search") || "",url.searchParams.get("industry") || ""),
+      industryOptions:INDUSTRY_OPTIONS,
       recovery:{imports:(recovery.imports || []).length,insights:(recovery.insights || []).length},
     });
   }

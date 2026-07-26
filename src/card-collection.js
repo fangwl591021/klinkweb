@@ -9,6 +9,13 @@ const CARD_VERSIONS = ['standard', 'full', 'square'];
 const VERSION_LAYOUT = { standard:'landscape', full:'portrait', square:'square' };
 const DEFAULT_CHAT_ALT_TEXT = '您收到一張數位名片';
 const normaliseTextAlign = (value) => ['left', 'center', 'right'].includes(String(value || '')) ? String(value) : 'left';
+export const INDUSTRY_OPTIONS = [
+  '健康醫療','美容美業','餐飲食品','零售電商','直銷／社群電商',
+  '金融保險','房地產居家','工商專業服務','教育培訓','科技資訊',
+  '行銷設計媒體','製造批發貿易','旅遊交通服務','社團協會公益','其他行業',
+];
+const INDUSTRY_PENDING = '待分類';
+const INDUSTRY_SET = new Set(INDUSTRY_OPTIONS);
 
 function normaliseButtons(value) {
   if (!Array.isArray(value)) return [];
@@ -46,6 +53,7 @@ function normaliseVersions(value, row = {}) {
   const source = rawVersions(row);
   const normalized = parseVersions({ ...row, versions_json:JSON.stringify(value && typeof value === 'object' ? value : {}) });
   if (source._crmInsights) normalized._crmInsights = source._crmInsights;
+  if (source._industry) normalized._industry = source._industry;
   return normalized;
 }
 export const normalizePhone = (value) => text(value, 60).replace(/[^0-9+]/g, '').replace(/^\+8860?/, '0');
@@ -75,12 +83,47 @@ function insightMeta(row = {}) {
     analysisVersion:text(value.analysisVersion, 40),
   };
 }
+export function normaliseIndustryClassification(value = {}) {
+  const primary = INDUSTRY_SET.has(value.primary) ? value.primary : INDUSTRY_PENDING;
+  const secondary = Array.isArray(value.secondary)
+    ? [...new Set(value.secondary.filter((item)=>INDUSTRY_SET.has(item) && item !== primary))].slice(0,2)
+    : [];
+  const confidence = Math.max(0,Math.min(1,Number(value.confidence) || 0));
+  const uncertain = value.source !== 'manual' && (primary === INDUSTRY_PENDING || confidence < 0.6);
+  return {
+    primary:uncertain ? INDUSTRY_PENDING : primary,
+    secondary:uncertain ? [] : secondary,
+    source:value.source === 'manual' ? 'manual' : uncertain ? 'pending' : 'ai',
+    confidence,
+    classifiedAt:text(value.classifiedAt,80),
+    manualLocked:value.source === 'manual' || value.manualLocked === true,
+  };
+}
+function industryMeta(row = {}) {
+  return normaliseIndustryClassification(rawVersions(row)._industry || {});
+}
+function withIndustryMeta(row, value, preserveManual = true) {
+  const source=rawVersions(row);
+  const existing=industryMeta(row);
+  if(preserveManual && existing.manualLocked)return JSON.stringify(source);
+  source._industry=normaliseIndustryClassification(value);
+  return JSON.stringify(source);
+}
+function industryFromOcr(result = {}) {
+  return normaliseIndustryClassification({
+    primary:result.primaryIndustry,
+    secondary:result.secondaryIndustries,
+    confidence:result.industryConfidence,
+    source:'ai',
+    classifiedAt:new Date().toISOString(),
+  });
+}
 function rowToCard(row) {
   if (!row) return null;
   const versions = parseVersions(row);
   const selectedVersion = CARD_VERSIONS.includes(row.selected_version) ? row.selected_version : 'standard';
   const selected = versions[selectedVersion];
-  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), aiInsights:insightMeta(row), createdAt:row.created_at, updatedAt:row.updated_at };
+  return { id:row.id, sourceType:row.source_type, sourcePersonalCardId:row.source_personal_card_id || '', displayName:row.display_name, englishName:row.english_name, companyName:row.company_name, jobTitle:row.job_title, department:row.department, mobile:row.mobile, companyPhone:row.company_phone, email:row.email, websiteUrl:row.website_url, lineUrl:row.line_url, address:row.address, serviceDescription:row.service_description, note:row.note, chatAltText:row.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, selectedVersion, versions, coverUrl:selected.coverUrl, buttons:selected.buttons, hasImage:Boolean(row.front_r2_key), aiInsights:insightMeta(row), industry:industryMeta(row), createdAt:row.created_at, updatedAt:row.updated_at };
 }
 
 async function findDuplicate(db, ownerId, card, excludedId = '') {
@@ -101,7 +144,7 @@ function bytesToBase64(buffer) {
   return btoa(binary);
 }
 
-const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
+const OCR_SCHEMA = { type:'object', additionalProperties:false, required:['isBusinessCard','confidence','language','primaryIndustry','secondaryIndustries','industryConfidence',...Object.keys(FIELD_LIMITS)], properties:{ isBusinessCard:{type:'boolean'}, confidence:{type:'number'}, language:{type:'string'}, primaryIndustry:{type:'string',enum:[INDUSTRY_PENDING,...INDUSTRY_OPTIONS]}, secondaryIndustries:{type:'array',maxItems:2,items:{type:'string',enum:INDUSTRY_OPTIONS}}, industryConfidence:{type:'number'}, ...Object.fromEntries(Object.keys(FIELD_LIMITS).map((key)=>[key,{type:'string'}])) } };
 const CONTENT_EXPANSION_SCHEMA = { type:'object', additionalProperties:false, required:['items'], properties:{ items:{ type:'array', minItems:3, maxItems:5, items:{ type:'string' } } } };
 const CRM_INSIGHT_KEYS = ['personality','interests','wealth','health','career'];
 const CRM_INSIGHT_ANALYSIS_VERSION = 'line-fate-v1';
@@ -132,7 +175,8 @@ async function callAiResponses(provider, body) {
 }
 
 async function recognizeWithOpenAI(apiKey, model, images) {
-  const content = [{ type:'input_text', text:'辨識這張商務名片。只擷取畫面中可確認的文字，不猜測；無法確認的欄位填空字串。若不是名片，isBusinessCard=false。繁體中文內容保留原文。note 僅放無法歸類但有價值的名片文字。' }];
+  const content = [{ type:'input_text', text:`辨識這張商務名片。只擷取畫面中可確認的文字，不猜測；無法確認的欄位填空字串。若不是名片，isBusinessCard=false。繁體中文內容保留原文。note 僅放無法歸類但有價值的名片文字。
+並依公司、職稱、部門與服務說明做一次行業分類：主行業只能選 1 個，次行業最多 2 個且不可與主行業相同。可選行業為：${INDUSTRY_OPTIONS.join('、')}。無法可靠判斷時 primaryIndustry 填「待分類」、secondaryIndustries 填空陣列；industryConfidence 填 0 到 1。` }];
   for (const image of images) content.push({ type:'input_image', image_url:`data:${image.type};base64,${bytesToBase64(image.bytes)}`, detail:'high' });
   const result = await callAiResponses(apiKey, { model:model || 'gpt-5.6-terra', reasoning:{effort:'low'}, max_output_tokens:1800, input:[{role:'user',content}], text:{format:{type:'json_schema',name:'business_card',strict:true,schema:OCR_SCHEMA}} });
   const outputText = result.output_text || result.output?.flatMap((item)=>item.content || []).find((item)=>item.type === 'output_text')?.text;
@@ -234,7 +278,7 @@ export async function processImportInBackground(db, bucket, userId, eventId, api
     }
     const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
     await db.batch([
-      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withInsightMeta(contact,{status:'queued',cards:{},error:''}),contact.id,userId),
+      db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,withIndustryMeta({...contact,versions_json:withInsightMeta(contact,{status:'queued',cards:{},error:''})},industryFromOcr(result)),contact.id,userId),
       db.prepare("UPDATE card_import_events SET status='created',ocr_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(JSON.stringify(result),eventId),
     ]);
   } catch(error) {
@@ -443,7 +487,12 @@ export async function confirmImport(db, bucket, userId, eventId, payload = {}) {
   const id = duplicate?.id || newId('contact');
   const sourceKey = event.front_r2_key;
   const values=[card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany];
-  const queuedVersions=withInsightMeta(duplicate || {},{status:'queued',cards:{},error:''});
+  let ocrResult={};
+  try { ocrResult=JSON.parse(event.ocr_json || '{}'); } catch {}
+  const queuedVersions=withIndustryMeta(
+    {...(duplicate || {}),versions_json:withInsightMeta(duplicate || {},{status:'queued',cards:{},error:''})},
+    industryFromOcr(ocrResult),
+  );
   if (duplicate) await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,versions_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(...values,queuedVersions,id,userId).run();
   else await db.prepare('INSERT INTO contact_cards (id,scanner_user_id,source_event_id,display_name,english_name,company_name,job_title,department,mobile,company_phone,email,website_url,line_url,address,service_description,note,normalized_mobile,normalized_email,normalized_name_company,front_r2_key,front_content_type,versions_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(id,userId,eventId,...values,sourceKey,event.front_content_type,queuedVersions).run();
   if (event.back_r2_key) await bucket.delete(event.back_r2_key);
@@ -453,9 +502,22 @@ export async function confirmImport(db, bucket, userId, eventId, payload = {}) {
   return { card:rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first()), updated:Boolean(duplicate) };
 }
 
-export async function listContacts(db,userId,search='') {
+export async function listContacts(db,userId,search='',industry='') {
   const q=`%${text(search,100).replace(/[\\%_]/g,'\\$&')}%`;
-  const result = search ? await db.prepare("SELECT * FROM contact_cards WHERE scanner_user_id=? AND status='active' AND (display_name LIKE ? ESCAPE '\\' OR company_name LIKE ? ESCAPE '\\' OR mobile LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\') ORDER BY updated_at DESC LIMIT 100").bind(userId,q,q,q,q).all() : await db.prepare("SELECT * FROM contact_cards WHERE scanner_user_id=? AND status='active' ORDER BY updated_at DESC LIMIT 100").bind(userId).all();
+  const selectedIndustry=industry === INDUSTRY_PENDING || INDUSTRY_SET.has(industry) ? industry : '';
+  const clauses=["scanner_user_id=?","status='active'"];
+  const bindings=[userId];
+  if(search){
+    clauses.push("(display_name LIKE ? ESCAPE '\\' OR company_name LIKE ? ESCAPE '\\' OR mobile LIKE ? ESCAPE '\\' OR email LIKE ? ESCAPE '\\')");
+    bindings.push(q,q,q,q);
+  }
+  if(selectedIndustry === INDUSTRY_PENDING){
+    clauses.push("COALESCE(json_extract(versions_json,'$._industry.primary'),'待分類')='待分類'");
+  } else if(selectedIndustry){
+    clauses.push("(json_extract(versions_json,'$._industry.primary')=? OR EXISTS (SELECT 1 FROM json_each(COALESCE(json_extract(versions_json,'$._industry.secondary'),'[]')) WHERE value=?))");
+    bindings.push(selectedIndustry,selectedIndustry);
+  }
+  const result=await db.prepare(`SELECT * FROM contact_cards WHERE ${clauses.join(' AND ')} ORDER BY updated_at DESC LIMIT 100`).bind(...bindings).all();
   return (result.results || []).map(rowToCard);
 }
 
@@ -467,6 +529,15 @@ export async function updateContact(db,userId,id,payload) {
   const existingCard=rowToCard(existing);
   const insightInputChanged=CRM_INSIGHT_SOURCE_KEYS.some((key)=>text(existingCard[key],FIELD_LIMITS[key] || 1000) !== text(card[key],FIELD_LIMITS[key] || 1000));
   if(insightInputChanged)versions._crmInsights={status:'queued',cards:{},updatedAt:new Date().toISOString(),error:''};
+  if(payload.industry && typeof payload.industry === 'object'){
+    versions._industry=normaliseIndustryClassification({
+      primary:payload.industry.primary,
+      secondary:payload.industry.secondary,
+      confidence:1,
+      source:'manual',
+      classifiedAt:new Date().toISOString(),
+    });
+  }
   const chatAltText = text(payload.chatAltText || existing.chat_alt_text || DEFAULT_CHAT_ALT_TEXT, 300);
   await db.prepare('UPDATE contact_cards SET display_name=?,english_name=?,company_name=?,job_title=?,department=?,mobile=?,company_phone=?,email=?,website_url=?,line_url=?,address=?,service_description=?,note=?,normalized_mobile=?,normalized_email=?,normalized_name_company=?,selected_version=?,versions_json=?,chat_alt_text=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND scanner_user_id=?').bind(card.displayName,card.englishName,card.companyName,card.jobTitle,card.department,card.mobile,card.companyPhone,card.email,card.websiteUrl,card.lineUrl,card.address,card.serviceDescription,card.note,card.normalizedMobile,card.normalizedEmail,card.normalizedNameCompany,selectedVersion,JSON.stringify(versions),chatAltText,id,userId).run();
   return rowToCard(await db.prepare('SELECT * FROM contact_cards WHERE id=?').bind(id).first());
