@@ -106,6 +106,10 @@ import {
   savePersonalCalendarEvent,
   updateCalendarLabel,
 } from "./personal-calendar.js";
+import {
+  buildCalendarVoiceProposal,
+  parseCalendarVoice,
+} from "./calendar-voice.js";
 import { buildMatchingCandidates, isSupportedMatchingQuery, matchContacts, SMART_MATCH_SCOPE_MESSAGE } from "./smart-matching.js";
 import { askMlmProductAdvisor } from "./product-advisor.js";
 import {
@@ -770,6 +774,35 @@ async function app(request, env, ctx) {
     }
   }
 
+  if (url.pathname === "/v1/personal-calendar/voice" && request.method === "POST") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    const contentLength = Number(request.headers.get("content-length") || 0);
+    if (contentLength > 1_600_000) return json({ success: false, error: "語音檔案過大，請縮短後再試" }, 413);
+    try {
+      const now = new Date();
+      const context = await listPersonalCalendar(env.DB, member.userId, {
+        from: new Date(now.getTime() - 86_400_000).toISOString(),
+        to: new Date(now.getTime() + 86_400_000).toISOString(),
+      });
+      const contentType = request.headers.get("content-type") || "";
+      const result = contentType.includes("application/json")
+        ? await parseCalendarVoice(env.MLM_WORKER, ((await readJson(request)) || {}).transcript, context, now)
+        : await (async () => {
+          const form = await request.formData();
+          return buildCalendarVoiceProposal(
+            env.MLM_WORKER,
+            form.get("audio") || form.get("file"),
+            form.get("durationMs"),
+            context,
+            now,
+          );
+        })();
+      return json({ success: true, ...result });
+    } catch (error) {
+      return json({ success: false, error: error.message || "AI 語音行程建立失敗" }, 400);
+    }
+  }
   if (url.pathname === "/v1/personal-calendar/events" && request.method === "POST") {
     const member = await currentMember(request, env);
     if (!member) return json({ success: false, error: "Unauthorized" }, 401);
