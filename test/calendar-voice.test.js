@@ -7,9 +7,9 @@ import {
   validateCalendarVoiceAudio,
 } from "../src/calendar-voice.js";
 
-test("voice transcription enforces the 10 second limit", () => {
+test("voice transcription enforces the 15 second limit", () => {
   const file = new File([new Uint8Array([1, 2, 3])], "voice.webm", { type:"audio/webm" });
-  assert.throws(() => validateCalendarVoiceAudio(file, 10_001), /最多 10 秒/);
+  assert.throws(() => validateCalendarVoiceAudio(file, 15_001), /最多 15 秒/);
 });
 
 test("voice transcription forwards multipart audio through the MLM binding", async () => {
@@ -54,11 +54,11 @@ test("AI proposal maps existing labels and contacts without saving an event", as
   assert.equal(result.proposal.needsConfirmation, false);
 });
 
-test("calendar UI records at most 10 seconds and fills an AI draft", async () => {
+test("calendar UI records at most 15 seconds and fills an AI draft", async () => {
   const source = await readFile(new URL("../public/app.js", import.meta.url), "utf8");
   assert.match(source, /navigator\.mediaDevices\.getUserMedia/);
   assert.match(source, /new MediaRecorder/);
-  assert.match(source, /setTimeout\(\(\)=>\{if\(recorder\?\.state==="recording"\)recorder\.stop\(\);\},10_000\)/);
+  assert.match(source, /setTimeout\(\(\)=>\{if\(recorder\?\.state==="recording"\)recorder\.stop\(\);\},15_000\)/);
   assert.match(source, /\/v1\/personal-calendar\/voice/);
   assert.match(source, /AI 已整理草稿/);
 });
