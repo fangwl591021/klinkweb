@@ -324,7 +324,7 @@ main#app>*,.content,.business-card,.business-card-detail,.line-source-ecard,.lin
 
 
 /* Free browser speech recognition for calendar entry. */
-.calendar-voice-input{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #d6e8df;border-radius:13px;background:#f3fbf6}
+.calendar-voice-input{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid #d6e8df;border-radius:13px;background:#0000ff}
 .calendar-voice-input>div{display:grid;gap:3px;min-width:0}
 .calendar-voice-input b{color:#173b2a;font-size:13px}
 .calendar-voice-input span{color:#697b72;font-size:11px;line-height:1.45}

@@ -1,5 +1,5 @@
 const MAX_AUDIO_BYTES = 1_500_000;
-export const MAX_CALENDAR_VOICE_DURATION_MS = 10_000;
+export const MAX_CALENDAR_VOICE_DURATION_MS = 15_000;
 const ALLOWED_AUDIO_TYPES = new Set([
   "audio/webm",
   "audio/ogg",
@@ -39,7 +39,7 @@ export function validateCalendarVoiceAudio(file, durationMs) {
   if (!(file instanceof File) || !file.size) throw new Error("請錄製語音後再試");
   const duration = Number(durationMs);
   if (!Number.isFinite(duration) || duration <= 0 || duration > MAX_CALENDAR_VOICE_DURATION_MS) {
-    throw new Error("語音長度最多 10 秒");
+    throw new Error("語音長度最多 15 秒");
   }
   if (file.size > MAX_AUDIO_BYTES) throw new Error("語音檔案過大，請縮短後再試");
   const mime = text(file.type, 100).toLowerCase().split(";")[0];
@@ -75,7 +75,7 @@ export async function parseCalendarVoice(provider, transcript, context = {}, now
   const contacts = (Array.isArray(context.contacts) ? context.contacts : [])
     .slice(0,100)
     .map((contact)=>({id:text(contact.id,100),name:text(contact.displayName,120),company:text(contact.companyName,180),title:text(contact.jobTitle,120)}));
-  const prompt = `你是繁體中文 AI 行事曆助理。請把使用者的 10 秒內語音逐字稿整理成行程草稿。
+  const prompt = `你是繁體中文 AI 行事曆助理。請把使用者的 15 秒內語音逐字稿整理成行程草稿。
 
 目前時間：${now.toISOString()}
 時區：Asia/Taipei
@@ -90,7 +90,7 @@ export async function parseCalendarVoice(provider, transcript, context = {}, now
 4. 日期或開始時間不明確時 startsAt、endsAt 都回傳空字串，needsConfirmation=true，不可猜測。
 5. labelName 只能選可用分類名稱；約見人物優先選「約訪」，否則選最接近分類。
 6. contactName 只有在收藏名片可明確對應時才填入完整姓名，否則空字串。
-7. reminderMinutes 只能是 0、10、30、60、1440；未提提醒時為 0。
+7. reminderMinutes 只能是 0、10、30、60、1440；未提提醒時為 60。
 8. 不得捏造地點、人物或內容；所有結果仍需使用者確認。只回傳 JSON。`;
   const response = await provider.fetch("https://mlm.internal/api/internal/ai/responses", {
     method:"POST",
