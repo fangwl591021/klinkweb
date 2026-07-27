@@ -9,6 +9,10 @@ test('collection match states use clear customer-facing labels', () => {
   assert.match(source, /includes\(match\.status\) \? "配對中" : "待配對"/);
 });
 
+test('collection header does not show the my-card shortcut', () => {
+  assert.doesNotMatch(source, /state\.tab === "cardCollection".*我的名片/);
+});
+
 test('collection polling refreshes rows without rebuilding the whole page', () => {
   assert.match(source, /cardCollection\(search,industry,true\)/);
   assert.match(source, /if\(!quiet\)\{\s*layout\(/);

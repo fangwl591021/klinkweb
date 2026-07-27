@@ -208,7 +208,7 @@ function avatar(member = state.member) {
 function layout(body) {
   const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], smartMatch:["智能配對","輸入合作需求，從你的名片收藏中找出適合的人選。"], calendar:["個人行事曆","同步顯示 MLM 活動與你的報名狀態。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
   const [featureTitle,featureHint] = featureCopy[state.tab] || ["康立行動入口","會員服務與活動入口。"];
-  const headerAction = state.tab === "card" ? `<button class="feature-header-action" data-home-action="cardCollection">名片收藏</button>` : state.tab === "cardCollection" ? `<button class="feature-header-action" data-home-action="card">我的名片</button>` : "";
+  const headerAction = state.tab === "card" ? `<button class="feature-header-action" data-home-action="cardCollection">名片收藏</button>` : "";
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div>${headerAction}</header>`;
   const memberHeader = state.tab === "home" ? "" : featureHeader;
   $("#app").innerHTML =
