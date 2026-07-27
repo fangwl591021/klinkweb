@@ -816,7 +816,7 @@ function renderPersonalCalendarView() {
 }
 async function personalCalendar() {
   state.tab="calendar";
-  layout(`<section class="card personal-calendar-loading"><h2>同步個人行事曆中…</h2><p class="muted">正在整合 MLM、我的行程、名片與生日提醒。</p></section>`);
+  layout(`<section class="card personal-calendar-loading"><h2>同步個人行事曆中…</h2><p class="muted">正在整合公司、個人與生日提醒。</p></section>`);
   try {
     const now=new Date(),from=new Date(now.getFullYear()-1,0,1).toISOString(),to=new Date(now.getFullYear()+2,0,1).toISOString();
     const result=await api(`/v1/personal-calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
