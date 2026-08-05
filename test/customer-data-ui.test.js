@@ -6,6 +6,7 @@ const appSource = readFileSync(new URL('../public/app.js', import.meta.url), 'ut
 const uiSource = readFileSync(new URL('../public/customer-data-ui.js', import.meta.url), 'utf8');
 const workerSource = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 const migration = readFileSync(new URL('../migrations/0037_customer_data_import.sql', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
 
 test('business cards and owned customers remain separate surfaces', () => {
   assert.match(appSource, /customerDataUi\.tabs\("cards"\)/);
@@ -21,6 +22,10 @@ test('spreadsheet import requires mapping, authority and preview before commit',
   assert.match(uiSource, /\/confirm/);
 });
 
+test('customer import authority checkbox keeps a fixed mobile size', () => {
+  assert.match(styles, /\.customer-authority input\{[^}]*width:19px!important;[^}]*height:19px;[^}]*min-height:0/);
+});
+
 test('customer APIs always derive ownership from authenticated member', () => {
   assert.match(workerSource, /listCustomers\(\s*env\.DB,\s*member\.userId/);
   assert.match(workerSource, /createCustomer\(env\.DB, member\.userId/);
@@ -33,4 +38,3 @@ test('customer storage carries tenant and owner scope on every major table', () 
   assert.equal((migration.match(/owner_user_id TEXT NOT NULL/g) || []).length, 2);
   assert.match(migration, /customer_import_rows/);
 });
-
