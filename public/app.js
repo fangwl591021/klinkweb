@@ -1,3 +1,5 @@
+import { createCustomerDataUi } from './customer-data-ui.js';
+
 const OFFICIAL_PAGES = {
   home: "https://www.k-link.com.tw/",
   about: "https://www.k-link.com.tw/about-us%E8%B5%B0%E9%80%B2%E5%BA%B7%E7%AB%8B",
@@ -207,7 +209,7 @@ function avatar(member = state.member) {
     : `<span class="avatar placeholder">${esc((member?.displayName || "L").slice(0, 1))}</span>`;
 }
 function layout(body) {
-  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], smartMatch:["智能配對","輸入合作需求，從你的名片收藏中找出適合的人選。"], calendar:["個人行事曆","同步顯示 MLM 活動與你的報名狀態。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
+  const featureCopy = { wallet:["點數錢包","查看目前可用點數與交易紀錄。"], courses:["課程活動","查看課程、完成報名與簽到。"], daily:[state.daily?.campaign?.name || "簽到贈點活動",`向左滑動輪播卡；完成 ${Number(state.daily?.campaign?.requiredCreativeCount) || 0} 項觀看後，即可每日簽到。`], card:["我的名片","編輯並分享你的專屬數位名片。"], zodiac:["星座運勢","依你的生日提供今日星座建議。"], cardCollection:["名片收藏","掃描、整理並搜尋你的私人名片簿。"], myCustomers:["我的客戶","管理自有客戶名單、聯絡進度與追蹤日期。"], smartMatch:["智能配對","輸入合作需求，從你的名片收藏中找出適合的人選。"], calendar:["個人行事曆","同步顯示 MLM 活動與你的報名狀態。"], profile:["會員資料","管理你的會員資料與個人資訊。"] };
   const [featureTitle,featureHint] = featureCopy[state.tab] || ["康立行動入口","會員服務與活動入口。"];
   const headerAction = state.tab === "card" ? `<button class="feature-header-action" data-home-action="cardCollection">名片收藏</button>` : "";
   const featureHeader = `<header class="hero member-hero feature-member-hero"><div class="daily-banner-profile">${avatar()}<strong>${esc(state.member?.displayName || "LINE 會員")}</strong></div><div class="daily-banner-copy"><h1>${esc(featureTitle)}</h1><p>${esc(featureHint)}</p></div>${headerAction}</header>`;
@@ -362,6 +364,7 @@ async function render() {
   if (state.tab === "card") return card();
   if (state.tab === "zodiac") return zodiac();
   if (state.tab === "cardCollection") return cardCollection();
+  if (state.tab === "myCustomers") return myCustomers();
   if (state.tab === "smartMatch") return smartMatch();
   if (state.tab === "calendar") return personalCalendar();
   if (state.tab === "profile") return profile();
@@ -846,6 +849,15 @@ function bindOfficialSiteLinks(){
   links.forEach(([link,page])=>link?.addEventListener("click",(event)=>{event.preventDefault();openOfficialSite(page)}));
 }
 function bindPortalActions(){document.querySelectorAll("[data-home-action]").forEach((button)=>(button.onclick=async()=>{const action=button.dataset.homeAction;if(action==="share")return showShareQr();if(action==="aiWear")return openAiWear();if(action==="walletqr"){const panel=$("#walletPanel");if(!panel){state.tab="wallet";return render()}$(".site-home-frame")?.classList.add("hidden");panel.classList.remove("hidden");panel.scrollIntoView({behavior:"smooth",block:"start"});return showWalletQr("homeWalletQr","homeWalletExpire")}state.tab=action==="home"?"home":action==="daily"?"daily":action==="courses"?"courses":action==="profile"?"profile":action==="card"?"card":action==="zodiac"?"zodiac":action==="cardCollection"?"cardCollection":action==="smartMatch"?"smartMatch":action==="calendar"?"calendar":"wallet";await render()}));bindOfficialSiteLinks();$("#copyInvite")?.addEventListener("click",copyInvite)}
+const customerDataUi = createCustomerDataUi({
+  api,
+  layout,
+  esc,
+  withActionFeedback,
+  setTab: (tab) => { state.tab = tab; },
+  showCards: () => cardCollection(),
+});
+async function myCustomers(search = "") { return customerDataUi.showList(search); }
 async function mlmMemberPointBalance(fallbackBalance=0){
   try{
     mlmPointSyncError="";
@@ -2018,7 +2030,8 @@ async function cardCollection(search = "", industry = "", quiet = false) {
   state.tab="cardCollection";
   if(collectionRefreshTimer){clearTimeout(collectionRefreshTimer);collectionRefreshTimer=null;}
   if(!quiet){
-    layout(`<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><nav id="collectionIndustryFilters" class="collection-industry-filters" aria-label="行業分類篩選"></nav><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><div class="collection-list-tools"><button type="button" id="toggleCollectionRanking" class="${collectionRankingEnabled?"active":""}">配對排名</button><span id="collectionCount">載入中…</span></div></div><p class="muted collection-system-note">名片先完成 OCR 並寫入收藏；AI 五大標籤會在後台接續補齊，不影響收藏與贈點。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
+    layout(`${customerDataUi.tabs("cards")}<section class="card card-scan-panel"><h2>▣ 掃描建立名片</h2><p class="muted">選擇照片後先裁切名片範圍，再上傳做 OCR 分析並建立 CRM 檔案；每張新名片贈 10 K點，相同名片不得重複上傳或領點。</p><div class="card-scan-actions"><label>📷 拍照掃描<input id="cardCamera" type="file" accept="image/*" capture="environment" hidden></label><label>▧ 相簿上傳<input id="cardGallery" type="file" accept="image/*" multiple hidden></label></div><div id="scanDraft" class="scan-draft hidden"><strong id="scanDraftCount"></strong><label class="mini-btn">＋ 加入背面<input id="cardBack" type="file" accept="image/*" capture="environment" hidden></label><button class="btn" id="startCardOcr">送出名片</button></div></section><section class="collection-search"><input id="collectionSearch" value="${esc(search)}" placeholder="搜尋姓名、公司、電話或 Email…"><button class="mini-btn" id="runCollectionSearch">搜尋</button></section><nav id="collectionIndustryFilters" class="collection-industry-filters" aria-label="行業分類篩選"></nav><section class="card collection-list"><div class="collection-list-head"><h2>我的收藏名單</h2><div class="collection-list-tools"><button type="button" id="toggleCollectionRanking" class="${collectionRankingEnabled?"active":""}">配對排名</button><span id="collectionCount">載入中…</span></div></div><p class="muted collection-system-note">名片先完成 OCR 並寫入收藏；AI 五大標籤會在後台接續補齊，不影響收藏與贈點。</p><div id="collectionRows"><p class="muted">正在載入收藏名片…</p></div></section>`);
+    customerDataUi.bindTabs();
     bindScanInputs();
   }
   try {

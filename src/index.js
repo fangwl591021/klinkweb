@@ -122,6 +122,16 @@ import {
   reconcileMemberCardCollectionRewards,
   retryPendingCardCollectionRewards,
 } from "./card-collection-reward.js";
+import {
+  archiveCustomer,
+  commitCustomerImport,
+  createCustomer,
+  getCustomerImport,
+  listCustomers,
+  previewCustomerImport,
+  rollbackCustomerImport,
+  updateCustomer,
+} from "./customer-data.js";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -893,6 +903,95 @@ async function app(request, env, ctx) {
       return json({ success: true, ...result }, result.duplicate ? 200 : 201);
     } catch (error) {
       return json({ success: false, error: error.message, code: error.code || "collect_failed" }, error.code === "self_card" ? 409 : 400);
+    }
+  }
+
+  if (request.method === "GET" && url.pathname === "/v1/customers") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({
+        success: true,
+        customers: await listCustomers(
+          env.DB,
+          member.userId,
+          url.searchParams.get("search") || "",
+          url.searchParams.get("status") || "",
+        ),
+      });
+    } catch (error) {
+      return badRequest(error.message || "客戶資料讀取失敗");
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/customers") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, customer: await createCustomer(env.DB, member.userId, (await readJson(request)) || {}) }, 201);
+    } catch (error) {
+      return json({ success: false, error: error.message || "客戶新增失敗", code: error.code || "save_failed", customer: error.customer || null }, error.code === "duplicate_customer" ? 409 : 400);
+    }
+  }
+
+  const customerRecordMatch = url.pathname.match(/^\/v1\/customers\/([^/]+)$/);
+  if (request.method === "PATCH" && customerRecordMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, customer: await updateCustomer(env.DB, member.userId, decodeURIComponent(customerRecordMatch[1]), (await readJson(request)) || {}) });
+    } catch (error) {
+      return badRequest(error.message || "客戶更新失敗");
+    }
+  }
+  if (request.method === "DELETE" && customerRecordMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, ...(await archiveCustomer(env.DB, member.userId, decodeURIComponent(customerRecordMatch[1]))) });
+    } catch (error) {
+      return badRequest(error.message || "客戶封存失敗");
+    }
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/customer-imports/preview") {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, ...(await previewCustomerImport(env.DB, member.userId, (await readJson(request)) || {})) }, 201);
+    } catch (error) {
+      return badRequest(error.message || "匯入預覽建立失敗");
+    }
+  }
+
+  const customerImportMatch = url.pathname.match(/^\/v1\/customer-imports\/([^/]+)$/);
+  const customerImportConfirmMatch = url.pathname.match(/^\/v1\/customer-imports\/([^/]+)\/confirm$/);
+  const customerImportRollbackMatch = url.pathname.match(/^\/v1\/customer-imports\/([^/]+)\/rollback$/);
+  if (request.method === "GET" && customerImportMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, ...(await getCustomerImport(env.DB, member.userId, decodeURIComponent(customerImportMatch[1]))) });
+    } catch (error) {
+      return badRequest(error.message || "匯入批次讀取失敗");
+    }
+  }
+  if (request.method === "POST" && customerImportConfirmMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, ...(await commitCustomerImport(env.DB, member.userId, decodeURIComponent(customerImportConfirmMatch[1]))) });
+    } catch (error) {
+      return badRequest(error.message || "匯入確認失敗");
+    }
+  }
+  if (request.method === "POST" && customerImportRollbackMatch) {
+    const member = await currentMember(request, env);
+    if (!member) return json({ success: false, error: "Unauthorized" }, 401);
+    try {
+      return json({ success: true, ...(await rollbackCustomerImport(env.DB, member.userId, decodeURIComponent(customerImportRollbackMatch[1]))) });
+    } catch (error) {
+      return badRequest(error.message || "匯入回滾失敗");
     }
   }
 
