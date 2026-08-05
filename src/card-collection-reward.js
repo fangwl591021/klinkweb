@@ -1,14 +1,15 @@
 const CARD_COLLECTION_REWARD_POINTS = 10;
 
-async function configuredCardCollectionRewardPoints(db) {
+async function configuredCardCollectionReward(db) {
   await db.prepare(`INSERT OR IGNORE INTO point_rules
     (id,program_id,event_type,points,daily_limit,award_frequency,status,rule_version)
     VALUES ('pointrule_card_collection','program_main','card_collection_reward',10,NULL,'per_completion','active','v1')`).run();
-  const rule=await db.prepare(`SELECT points FROM point_rules
-    WHERE program_id='program_main' AND event_type='card_collection_reward' AND status='active'
+  const rule=await db.prepare(`SELECT points,status FROM point_rules
+    WHERE program_id='program_main' AND event_type='card_collection_reward'
     ORDER BY updated_at DESC LIMIT 1`).first();
   const points=Number(rule?.points);
-  return Number.isInteger(points) && points > 0 ? points : 0;
+  const enabled=rule?.status==='active' && Number.isInteger(points) && points > 0;
+  return { enabled, points:enabled ? points : 0, status:String(rule?.status || 'inactive') };
 }
 
 async function ensureCardCollectionRewardTable(db) {
@@ -27,6 +28,13 @@ async function ensureCardCollectionRewardTable(db) {
   `).run();
 }
 
+async function cancelRewardBecauseDisabled(db, userId, cardId) {
+  await db.prepare(`UPDATE card_collection_rewards
+    SET status='cancelled',last_error='業主已關閉收藏贈點',updated_at=CURRENT_TIMESTAMP
+    WHERE user_id=? AND contact_card_id=? AND status IN ('pending','processing')`)
+    .bind(userId,cardId).run();
+}
+
 async function rewardLineSubject(db, userId) {
   const row = await db.prepare(`
     SELECT provider_subject FROM external_identities
@@ -36,16 +44,21 @@ async function rewardLineSubject(db, userId) {
   return String(row?.provider_subject || '').trim();
 }
 
+export async function cardCollectionRewardStatus(db) {
+  await ensureCardCollectionRewardTable(db);
+  return configuredCardCollectionReward(db);
+}
+
 export async function queueCardCollectionReward(db, userId, cardId) {
   await ensureCardCollectionRewardTable(db);
-  const points=await configuredCardCollectionRewardPoints(db);
-  if(points<=0)return {queued:false,points:0};
+  const setting=await configuredCardCollectionReward(db);
+  if(!setting.enabled)return {queued:false,points:0,status:'disabled'};
   await db.prepare(`
     INSERT INTO card_collection_rewards (user_id, contact_card_id, points)
     VALUES (?, ?, ?)
     ON CONFLICT(user_id, contact_card_id) DO NOTHING
-  `).bind(userId, cardId, points).run();
-  return {queued:true,points};
+  `).bind(userId, cardId, setting.points).run();
+  return {queued:true,points:setting.points,status:'queued'};
 }
 
 export async function fulfillCardCollectionReward(env, userId, cardId) {
@@ -53,6 +66,13 @@ export async function fulfillCardCollectionReward(env, userId, cardId) {
   const reward = await env.DB.prepare('SELECT * FROM card_collection_rewards WHERE user_id=? AND contact_card_id=? LIMIT 1').bind(userId, cardId).first();
   if (!reward) return { status:'not_queued', points:0 };
   if (reward.status === 'completed') return { status:'completed', points:Number(reward.points || CARD_COLLECTION_REWARD_POINTS), duplicate:true };
+
+  const setting=await configuredCardCollectionReward(env.DB);
+  if(!setting.enabled){
+    await cancelRewardBecauseDisabled(env.DB,userId,cardId);
+    return {status:'disabled',points:0};
+  }
+
   const card = await env.DB.prepare("SELECT id FROM contact_cards WHERE id=? AND scanner_user_id=? AND status='active' LIMIT 1").bind(cardId, userId).first();
   if (!card) {
     await env.DB.prepare("UPDATE card_collection_rewards SET status='cancelled',last_error='名片不存在',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND contact_card_id=?").bind(userId, cardId).run();
@@ -78,6 +98,11 @@ export async function fulfillCardCollectionReward(env, userId, cardId) {
     await env.DB.prepare("UPDATE card_collection_rewards SET status='completed',last_error='',updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND contact_card_id=?").bind(userId, cardId).run();
     return { status:'completed', points:Number(result.points || CARD_COLLECTION_REWARD_POINTS), duplicate:Boolean(result.duplicate), balance:result.balance };
   } catch (error) {
+    const latestSetting=await configuredCardCollectionReward(env.DB).catch(()=>setting);
+    if(!latestSetting.enabled){
+      await cancelRewardBecauseDisabled(env.DB,userId,cardId);
+      return {status:'disabled',points:0};
+    }
     await env.DB.prepare("UPDATE card_collection_rewards SET status='pending',last_error=?,updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND contact_card_id=?")
       .bind(String(error?.message || error).slice(0, 300), userId, cardId).run().catch(() => null);
     throw error;
@@ -93,6 +118,8 @@ export async function queueAndFulfillCardCollectionReward(env, userId, cardId) {
 
 export async function reconcileMemberCardCollectionRewards(env, userId, limit = 5) {
   await ensureCardCollectionRewardTable(env.DB);
+  const setting=await configuredCardCollectionReward(env.DB);
+  if(!setting.enabled)return {scanned:0,completed:0,status:'disabled'};
   // 只補送已通過新版圖片指紋防重、且 OCR 已完成的名片；不追溯舊資料。
   const rows=await env.DB.prepare(`SELECT cc.id contact_card_id
     FROM contact_cards cc
@@ -108,11 +135,18 @@ export async function reconcileMemberCardCollectionRewards(env, userId, limit = 
     const result=await queueAndFulfillCardCollectionReward(env,userId,row.contact_card_id);
     if(result.status==='completed')completed+=1;
   }
-  return {scanned:(rows.results || []).length,completed};
+  return {scanned:(rows.results || []).length,completed,status:'active'};
 }
 
 export async function retryPendingCardCollectionRewards(env, limit = 10) {
   await ensureCardCollectionRewardTable(env.DB);
+  const setting=await configuredCardCollectionReward(env.DB);
+  if(!setting.enabled){
+    const cancelled=await env.DB.prepare(`UPDATE card_collection_rewards
+      SET status='cancelled',last_error='業主已關閉收藏贈點',updated_at=CURRENT_TIMESTAMP
+      WHERE status IN ('pending','processing')`).run();
+    return {scanned:0,completed:0,cancelled:Number(cancelled?.meta?.changes || 0),status:'disabled'};
+  }
   const rows = await env.DB.prepare(`
     SELECT user_id, contact_card_id FROM card_collection_rewards
     WHERE status='pending' AND attempts < 20
@@ -123,5 +157,5 @@ export async function retryPendingCardCollectionRewards(env, limit = 10) {
     try { const result = await fulfillCardCollectionReward(env, row.user_id, row.contact_card_id); if (result.status === 'completed') completed += 1; }
     catch (error) { console.warn('Pending card collection reward retry failed', row.contact_card_id, error); }
   }
-  return { scanned:(rows.results || []).length, completed };
+  return { scanned:(rows.results || []).length, completed, cancelled:0, status:'active' };
 }
